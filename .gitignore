@@ -1,0 +1,15 @@
+.DS_Store
+.php-cs-fixer.cache
+.phpunit.cache
+coverage
+*.bak
+
+# Editor
+.vscode/
+.idea/
+
+# Node
+node_modules/
+
+# OS
+Thumbs.db

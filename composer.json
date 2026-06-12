@@ -1,0 +1,26 @@
+{
+  "name": "industrialdev/wicket-wp-lockbox",
+  "description": "Wicket Lockbox plugin for bulk membership import and payment processing",
+  "type": "wordpress-plugin",
+  "license": "GPL-2.0-or-later",
+  "require": {
+    "php": ">=8.2",
+    "industrialdev/wicket-wp-base-plugin": "^2.4",
+    "estebanforge/hyperfields": "^1.0"
+  },
+  "require-dev": {
+    "squizlabs/php_codesniffer": "^3.11",
+    "phpcompatibility/phpcompatibility-wp": "^2.1",
+    "wp-coding-standards/wpcs": "^3.1"
+  },
+  "autoload": {
+    "psr-4": {
+      "WicketLockbox\\": "src/"
+    }
+  },
+  "config": {
+    "allow-plugins": {
+      "dealerdirect/phpcodesniffer-composer-installer": true
+    }
+  }
+}
