@@ -13,7 +13,7 @@ use WicketLockbox\BulkImport\Database\ImportStagingTable;
  * @method \WicketLockbox\BulkImport\Database\ImportStagingTable StagingTable()
  * @method \WicketLockbox\BulkImport\FileParserService FileParser()
  */
-class Lockbox
+final class Lockbox
 {
 	/**
 	 * Singleton instance.

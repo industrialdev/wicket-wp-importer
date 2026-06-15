@@ -26,6 +26,7 @@ final class FileParserService
 	/**
 	 * Parse a CSV file into rows keyed by canonical column keys.
 	 *
+	 * @param string                 $path             Absolute path to an uploaded CSV. Caller (REST endpoint, Task 6) MUST verify it resides under wp_upload_dir()['basedir'] before calling.
 	 * @param list<ColumnDefinition> $columnDefinitions Expected columns.
 	 * @return ParseResult Rows on success; error populated on failure.
 	 */
@@ -85,7 +86,7 @@ final class FileParserService
 	private function resolveDelimiter(): string
 	{
 		/** @var string $delimiter */
-		$delimiter = apply_filters( 'wicket_import_csv_delimiter', ',' );
+		$delimiter = (string) apply_filters( 'wicket_import_csv_delimiter', ',' );
 
 		if ( mb_strlen( $delimiter ) !== 1 ) {
 			$this->log( 'warning', sprintf( 'Invalid CSV delimiter from filter (%s); falling back to comma.', $delimiter ) );
@@ -107,16 +108,20 @@ final class FileParserService
 		$peek = $peek === false ? '' : $peek;
 		rewind( $handle );
 
-		if ( $peek === "\xFF\xFE" ) {
+		// UTF-16 BOMs are 2 bytes; fread returns 3, so use str_starts_with (=== is always false on unequal lengths).
+		// Consume the 2-byte BOM before attaching iconv, else the filter decodes the BOM codepoint itself.
+		if ( str_starts_with( $peek, "\xFF\xFE" ) ) {
+			fread( $handle, 2 );
 			stream_filter_append( $handle, 'convert.iconv.UTF-16LE.UTF-8' );
 			return;
 		}
-		if ( $peek === "\xFE\xFF" ) {
+		if ( str_starts_with( $peek, "\xFE\xFF" ) ) {
+			fread( $handle, 2 );
 			stream_filter_append( $handle, 'convert.iconv.UTF-16BE.UTF-8' );
 			return;
 		}
+		// UTF-8 BOM: consume the 3 bytes, pointer sits at real content.
 		if ( $peek === "\xEF\xBB\xBF" ) {
-			// Consume the 3-byte UTF-8 BOM, leaving the pointer at real content.
 			fread( $handle, 3 );
 		}
 	}
@@ -145,15 +150,17 @@ final class FileParserService
 				rows: [],
 				missingHeaders: $missing,
 				totalCount: 0,
-				error: 'Missing required CSV headers: ' . implode( ', ', $missing ),
+				error: 'Missing required CSV headers: ' . implode( ', ', $this->labelsForKeys( $missing, $columnDefinitions ) ),
 			);
 		}
 
 		$rows     = [];
 		$rowIndex = 0;
 		while ( ( $raw = fgetcsv( $handle, 0, $delimiter, '"', '' ) ) !== false ) {
+			// Skip blank lines. [null] = truly empty line; [''] = single empty quoted token.
+			// Whitespace-only cells ("  ","  ") are NOT skipped — spec says blank lines only.
 			if ( $raw === [ null ] || $raw === [ '' ] ) {
-				continue; // skip blank lines
+				continue;
 			}
 
 			$rows[] = new CsvRow(
@@ -222,6 +229,22 @@ final class FileParserService
 			$data[ $key ] = is_string( $value ) ? trim( $value ) : $value;
 		}
 		return $data;
+	}
+
+	/**
+	 * Map required-column keys back to their human-readable labels for error messages.
+	 *
+	 * @param list<string>           $keys
+	 * @param list<ColumnDefinition> $columnDefinitions
+	 * @return list<string>
+	 */
+	private function labelsForKeys( array $keys, array $columnDefinitions ): array
+	{
+		$byKey = [];
+		foreach ( $columnDefinitions as $column ) {
+			$byKey[ $column->key ] = $column->label;
+		}
+		return array_map( fn ( string $key ): string => $byKey[ $key ] ?? $key, $keys );
 	}
 
 	private function log( string $level, string $message ): void

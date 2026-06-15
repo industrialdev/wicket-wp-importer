@@ -55,6 +55,6 @@ final class ColumnDefinition
 		// Collapse underscores, hyphens, and whitespace runs so that
 		// "Email Address", "email_address", and "Email-Address" share one alias.
 		$value = preg_replace( '/[_\-\s]+/u', ' ', $value ) ?? $value;
-		return strtolower( $value );
+		return mb_strtolower( $value, 'UTF-8' );
 	}
 }
