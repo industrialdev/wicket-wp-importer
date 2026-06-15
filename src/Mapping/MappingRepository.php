@@ -183,15 +183,11 @@ class MappingRepository
 	 */
 	private function getOptionKey( string $mappingType ): string
 	{
-		switch ( $mappingType ) {
-			case 'late_fee':
-				return 'late_fees';
-			case 'discount':
-				return 'discounts';
-			case 'section':
-				return 'sections';
-			default:
-				throw new \InvalidArgumentException( "Unknown mapping type: " . $mappingType );
-		}
+		return match ( $mappingType ) {
+			'late_fee' => 'late_fees',
+			'discount' => 'discounts',
+			'section'  => 'sections',
+			default    => throw new \InvalidArgumentException( "Unknown mapping type: {$mappingType}" ),
+		};
 	}
 }

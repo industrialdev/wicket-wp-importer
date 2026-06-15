@@ -16,7 +16,7 @@ class Assets
 	public function enqueue_admin_assets( string $hook ): void
 	{
 		// Only enqueue on Lockbox pages
-		if ( strpos( $hook, 'wicket-wp-lockbox' ) === false ) {
+		if ( ! str_contains( $hook, 'wicket-wp-lockbox' ) ) {
 			return;
 		}
 
