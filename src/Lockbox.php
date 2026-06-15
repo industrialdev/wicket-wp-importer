@@ -11,6 +11,7 @@ use WicketLockbox\BulkImport\Database\ImportStagingTable;
  * @method \WicketLockbox\Mapping\MappingRepository Mappings()
  * @method \WicketLockbox\Services\Logger Logger()
  * @method \WicketLockbox\BulkImport\Database\ImportStagingTable StagingTable()
+ * @method \WicketLockbox\BulkImport\FileParserService FileParser()
  */
 class Lockbox
 {
@@ -53,10 +54,13 @@ class Lockbox
 		}
 
 		// Core service instances
+		$logger = new \WicketLockbox\Services\Logger();
+
 		$this->instances = [
+			'Logger'       => $logger,
 			'Mappings'     => new \WicketLockbox\Mapping\MappingRepository(),
-			'Logger'       => new \WicketLockbox\Services\Logger(),
 			'StagingTable' => new ImportStagingTable(),
+			'FileParser'   => new \WicketLockbox\BulkImport\FileParserService( $logger ),
 		];
 
 		// Instantiate classes that register their own hooks
@@ -64,7 +68,7 @@ class Lockbox
 		new \WicketLockbox\Assets();
 		new \WicketLockbox\Mapping\MappingSettings();
 
-		// TODO Phase 1: FileParserService, ValidationService, ImportPipeline, UploadController
+		// TODO Phase 1: ValidationService, ImportPipeline, UploadController
 		// TODO Phase 4: Cheque\BatchProcessor, Cheque\Rest\ProcessController
 	}
 
