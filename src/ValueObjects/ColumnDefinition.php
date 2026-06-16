@@ -16,7 +16,8 @@ final class ColumnDefinition
 	 * @param string       $label      Human-readable label; also accepted as a header.
 	 * @param bool         $required   Whether the CSV must include a header for this column.
 	 * @param list<string> $aliases    Additional accepted header spellings.
-	 * @param list<mixed>  $validators Validator specs applied by ValidationService (Task 5).
+	 * @param list<array<string,mixed>> $validators Validator specs applied by ValidationService (Task 5). Each spec is ['type' => <name>, ...options].
+	 * @param bool         $dedup      Whether this column is part of the in-file duplicate composite key (Task 5.5).
 	 */
 	public function __construct(
 		public readonly string $key,
@@ -24,6 +25,7 @@ final class ColumnDefinition
 		public readonly bool $required = false,
 		public readonly array $aliases = [],
 		public readonly array $validators = [],
+		public readonly bool $dedup = false,
 	) {
 	}
 

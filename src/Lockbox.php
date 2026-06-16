@@ -12,6 +12,7 @@ use WicketLockbox\BulkImport\Database\ImportStagingTable;
  * @method \WicketLockbox\Services\Logger Logger()
  * @method \WicketLockbox\BulkImport\Database\ImportStagingTable StagingTable()
  * @method \WicketLockbox\BulkImport\FileParserService FileParser()
+ * @method \WicketLockbox\BulkImport\ValidationService Validation()
  */
 final class Lockbox
 {
@@ -61,6 +62,7 @@ final class Lockbox
 			'Mappings'     => new \WicketLockbox\Mapping\MappingRepository(),
 			'StagingTable' => new ImportStagingTable(),
 			'FileParser'   => new \WicketLockbox\BulkImport\FileParserService( $logger ),
+			'Validation'   => new \WicketLockbox\BulkImport\ValidationService( $logger ),
 		];
 
 		// Instantiate classes that register their own hooks
@@ -68,7 +70,7 @@ final class Lockbox
 		new \WicketLockbox\Assets();
 		new \WicketLockbox\Mapping\MappingSettings();
 
-		// TODO Phase 1: ValidationService, ImportPipeline, UploadController
+		// TODO Phase 1: ImportPipeline, UploadController
 		// TODO Phase 4: Cheque\BatchProcessor, Cheque\Rest\ProcessController
 	}
 
