@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 
-namespace WicketLockbox\ValueObjects;
+namespace WicketImporter\ValueObjects;
 
 /**
  * Immutable definition of a single expected CSV column.

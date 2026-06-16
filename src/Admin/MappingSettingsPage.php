@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 
-namespace WicketLockbox\Admin;
+namespace WicketImporter\Admin;
 
 class MappingSettingsPage
 {

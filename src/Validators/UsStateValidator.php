@@ -1,9 +1,9 @@
 <?php
 declare(strict_types=1);
 
-namespace WicketLockbox\Validators;
+namespace WicketImporter\Validators;
 
-use WicketLockbox\ValueObjects\ValidationResult;
+use WicketImporter\ValueObjects\ValidationResult;
 
 /**
  * Two-letter US state abbreviation (50 states + DC). Case-insensitive.

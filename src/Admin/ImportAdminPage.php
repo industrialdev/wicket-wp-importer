@@ -1,12 +1,12 @@
 <?php
 declare(strict_types=1);
 
-namespace WicketLockbox\Admin;
+namespace WicketImporter\Admin;
 
-use WicketLockbox\Support\SecuresRequests;
+use WicketImporter\Support\SecuresRequests;
 
 /**
- * Admin page for Lockbox. Registered as submenu under the Wicket parent (wicket-settings).
+ * Admin page for the importer. Registered as submenu under the Wicket parent (wicket-settings).
  */
 class ImportAdminPage
 {
@@ -24,10 +24,10 @@ class ImportAdminPage
 	{
 		add_submenu_page(
 			'wicket-settings',
-			__( 'Lockbox', 'wicket-wp-lockbox' ),
-			__( 'Lockbox', 'wicket-wp-lockbox' ),
+			__( 'Import', 'wicket-wp-importer' ),
+			__( 'Import', 'wicket-wp-importer' ),
 			'manage_options',
-			'wicket-wp-lockbox',
+			'wicket-wp-importer',
 			[ $this, 'renderPage' ]
 		);
 	}
@@ -41,8 +41,8 @@ class ImportAdminPage
 		$this->requireCapability();
 		?>
 		<div class="wrap">
-			<h1><?php esc_html_e( 'Lockbox', 'wicket-wp-lockbox' ); ?></h1>
-			<p><?php esc_html_e( 'Bulk import and payment processing.', 'wicket-wp-lockbox' ); ?></p>
+			<h1><?php esc_html_e( 'Import', 'wicket-wp-importer' ); ?></h1>
+			<p><?php esc_html_e( 'Bulk import and payment processing.', 'wicket-wp-importer' ); ?></p>
 		</div>
 		<?php
 	}

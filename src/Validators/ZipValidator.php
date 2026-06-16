@@ -1,10 +1,10 @@
 <?php
 declare(strict_types=1);
 
-namespace WicketLockbox\Validators;
+namespace WicketImporter\Validators;
 
-use WicketLockbox\Services\Logger;
-use WicketLockbox\ValueObjects\ValidationResult;
+use WicketImporter\Services\Logger;
+use WicketImporter\ValueObjects\ValidationResult;
 
 /**
  * Postal code check, configurable per locale via the spec 'locale' option.

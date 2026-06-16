@@ -1,21 +1,21 @@
 <?php
 declare(strict_types=1);
 
-namespace WicketLockbox\BulkImport;
+namespace WicketImporter\BulkImport;
 
-use WicketLockbox\Services\Logger;
-use WicketLockbox\ValueObjects\ColumnDefinition;
-use WicketLockbox\ValueObjects\CsvRow;
-use WicketLockbox\ValueObjects\ValidationResult;
-use WicketLockbox\ValueObjects\ValidationSummary;
-use WicketLockbox\Validators\DateValidator;
-use WicketLockbox\Validators\EmailValidator;
-use WicketLockbox\Validators\EnumValidator;
-use WicketLockbox\Validators\PhoneValidator;
-use WicketLockbox\Validators\RequiredValidator;
-use WicketLockbox\Validators\UsStateValidator;
-use WicketLockbox\Validators\ValidatorInterface;
-use WicketLockbox\Validators\ZipValidator;
+use WicketImporter\Services\Logger;
+use WicketImporter\ValueObjects\ColumnDefinition;
+use WicketImporter\ValueObjects\CsvRow;
+use WicketImporter\ValueObjects\ValidationResult;
+use WicketImporter\ValueObjects\ValidationSummary;
+use WicketImporter\Validators\DateValidator;
+use WicketImporter\Validators\EmailValidator;
+use WicketImporter\Validators\EnumValidator;
+use WicketImporter\Validators\PhoneValidator;
+use WicketImporter\Validators\RequiredValidator;
+use WicketImporter\Validators\UsStateValidator;
+use WicketImporter\Validators\ValidatorInterface;
+use WicketImporter\Validators\ZipValidator;
 
 /**
  * Validates parsed CSV rows against column definitions.

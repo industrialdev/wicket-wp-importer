@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 
-namespace WicketLockbox\Support;
+namespace WicketImporter\Support;
 
 /**
  * Security baseline for admin pages and REST endpoints.
@@ -10,13 +10,13 @@ namespace WicketLockbox\Support;
 trait SecuresRequests
 {
 	/**
-	 * Verify the current user can manage Lockbox.
+	 * Verify the current user can manage the importer.
 	 * Uses manage_options (admin-level) per plan task 3.3.
 	 */
 	protected function requireCapability(): void
 	{
 		if ( ! current_user_can( 'manage_options' ) ) {
-			wp_die( esc_html__( 'You do not have permission to access this page.', 'wicket-wp-lockbox' ), 403 );
+			wp_die( esc_html__( 'You do not have permission to access this page.', 'wicket-wp-importer' ), 403 );
 		}
 	}
 
@@ -32,10 +32,10 @@ trait SecuresRequests
 	/**
 	 * Verify nonce for form or AJAX requests.
 	 */
-	protected function verifyNonce( string $action = 'wicket_lockbox_nonce', string $query_arg = '_wpnonce' ): void
+	protected function verifyNonce( string $action = 'wicket_import_nonce', string $query_arg = '_wpnonce' ): void
 	{
 		if ( ! wp_verify_nonce( sanitize_text_field( wp_unslash( $_REQUEST[ $query_arg ] ?? '' ) ), $action ) ) {
-			wp_die( esc_html__( 'Nonce verification failed.', 'wicket-wp-lockbox' ), 403 );
+			wp_die( esc_html__( 'Nonce verification failed.', 'wicket-wp-importer' ), 403 );
 		}
 	}
 }

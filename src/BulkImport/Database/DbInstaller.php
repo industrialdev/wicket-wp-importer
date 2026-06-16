@@ -1,12 +1,12 @@
 <?php
 declare(strict_types=1);
 
-namespace WicketLockbox\BulkImport\Database;
+namespace WicketImporter\BulkImport\Database;
 
 class DbInstaller
 {
-	private const DB_VERSION_OPTION = 'wicket_lockbox_db_version';
-	public const MAPPINGS_OPTION = 'wicket_lockbox_mappings';
+	private const DB_VERSION_OPTION = 'wicket_import_db_version';
+	public const MAPPINGS_OPTION = 'wicket_import_mappings';
 
 	/**
 	 * Check schema version and run install/migration if needed.
@@ -14,10 +14,10 @@ class DbInstaller
 	public static function checkSchemaVersion(): void
 	{
 		$installed_version = get_option( self::DB_VERSION_OPTION );
-		if ( $installed_version !== WICKET_LOCKBOX_DB_VERSION ) {
+		if ( $installed_version !== WICKET_IMPORT_DB_VERSION ) {
 			self::createTables();
 			self::seedDefaultMappings();
-			update_option( self::DB_VERSION_OPTION, WICKET_LOCKBOX_DB_VERSION );
+			update_option( self::DB_VERSION_OPTION, WICKET_IMPORT_DB_VERSION );
 		}
 	}
 

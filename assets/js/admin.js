@@ -1,5 +1,5 @@
 /**
- * Wicket Lockbox Admin Script
+ * Wicket Importer Admin Script
  */
 jQuery(document).ready(function($) {
     // Phase 0 loaded

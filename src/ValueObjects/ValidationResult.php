@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 
-namespace WicketLockbox\ValueObjects;
+namespace WicketImporter\ValueObjects;
 
 /**
  * Outcome of validating a single row (or a single field within a row). Immutable.

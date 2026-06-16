@@ -1,9 +1,9 @@
 <?php
 declare(strict_types=1);
 
-namespace WicketLockbox\Validators;
+namespace WicketImporter\Validators;
 
-use WicketLockbox\ValueObjects\ValidationResult;
+use WicketImporter\ValueObjects\ValidationResult;
 
 /**
  * Value must be one of an allowed set.

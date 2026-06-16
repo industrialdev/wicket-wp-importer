@@ -1,9 +1,9 @@
 <?php
 declare(strict_types=1);
 
-namespace WicketLockbox\Mapping;
+namespace WicketImporter\Mapping;
 
-use WicketLockbox\BulkImport\Database\DbInstaller;
+use WicketImporter\BulkImport\Database\DbInstaller;
 
 class MappingRepository
 {

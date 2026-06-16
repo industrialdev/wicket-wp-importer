@@ -1,6 +1,6 @@
 {
-  "name": "industrialdev/wicket-wp-lockbox",
-  "description": "Wicket Lockbox plugin for bulk membership import and payment processing",
+  "name": "industrialdev/wicket-wp-importer",
+  "description": "Wicket Importer plugin for bulk membership import and payment processing",
   "type": "wordpress-plugin",
   "license": "GPL-2.0-or-later",
   "require": {
@@ -15,7 +15,7 @@
   },
   "autoload": {
     "psr-4": {
-      "WicketLockbox\\": "src/"
+      "WicketImporter\\": "src/"
     }
   },
   "config": {

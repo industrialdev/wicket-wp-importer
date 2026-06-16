@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 
-namespace WicketLockbox\ValueObjects;
+namespace WicketImporter\ValueObjects;
 
 /**
  * A single parsed CSV row, mapped to canonical column keys. Immutable.

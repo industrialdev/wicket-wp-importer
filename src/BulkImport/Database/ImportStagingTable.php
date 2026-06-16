@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 
-namespace WicketLockbox\BulkImport\Database;
+namespace WicketImporter\BulkImport\Database;
 
 /**
  * CRUD for the wicket_import_staged_records table.

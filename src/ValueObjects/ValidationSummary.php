@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 
-namespace WicketLockbox\ValueObjects;
+namespace WicketImporter\ValueObjects;
 
 /**
  * Aggregate outcome of validating a batch of rows. Immutable.

@@ -6,5 +6,5 @@ $vendorDir = dirname(__DIR__);
 $baseDir = dirname($vendorDir);
 
 return array(
-    'WicketLockbox\\' => array($baseDir . '/src'),
+    'WicketImporter\\' => array($baseDir . '/src'),
 );

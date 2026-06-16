@@ -9,12 +9,12 @@ class ComposerStaticInitd8609246c45ab2685cffde2acc13fdbd
     public static $prefixLengthsPsr4 = array (
         'W' =>
         array (
-            'WicketLockbox\\' => 14,
+            'WicketImporter\\' => 15,
         ),
     );
 
     public static $prefixDirsPsr4 = array (
-        'WicketLockbox\\' =>
+        'WicketImporter\\' =>
         array (
             0 => __DIR__ . '/../..' . '/src',
         ),

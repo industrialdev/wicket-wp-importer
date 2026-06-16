@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 
-namespace WicketLockbox\Services;
+namespace WicketImporter\Services;
 
 class Logger
 {
@@ -36,9 +36,9 @@ class Logger
 	{
 		if ( function_exists( 'wc_get_logger' ) ) {
 			$logger = wc_get_logger();
-			$logger->log( $level, $message, array_merge( [ 'source' => 'wicket-wp-lockbox' ], $context ) );
+			$logger->log( $level, $message, array_merge( [ 'source' => 'wicket-wp-importer' ], $context ) );
 		} else {
-			error_log( sprintf( '[Wicket Lockbox %s]: %s %s', strtoupper( $level ), $message, json_encode( $context ) ) );
+			error_log( sprintf( '[Wicket Importer %s]: %s %s', strtoupper( $level ), $message, json_encode( $context ) ) );
 		}
 	}
 }

@@ -1,12 +1,12 @@
 <?php
 declare(strict_types=1);
 
-namespace WicketLockbox\BulkImport;
+namespace WicketImporter\BulkImport;
 
-use WicketLockbox\Services\Logger;
-use WicketLockbox\ValueObjects\ColumnDefinition;
-use WicketLockbox\ValueObjects\CsvRow;
-use WicketLockbox\ValueObjects\ParseResult;
+use WicketImporter\Services\Logger;
+use WicketImporter\ValueObjects\ColumnDefinition;
+use WicketImporter\ValueObjects\CsvRow;
+use WicketImporter\ValueObjects\ParseResult;
 
 /**
  * Parses a CSV file into CsvRow objects mapped against column definitions.
@@ -66,7 +66,7 @@ final class FileParserService
 		}
 
 		/** @var int $maxSize Filterable max upload size in bytes. */
-		$maxSize = (int) apply_filters( 'wicket_import_max_file_size', WICKET_LOCKBOX_DEFAULT_MAX_FILE_SIZE );
+		$maxSize = (int) apply_filters( 'wicket_import_max_file_size', WICKET_IMPORT_DEFAULT_MAX_FILE_SIZE );
 		$size    = filesize( $path );
 
 		if ( $size !== false && $size > $maxSize ) {

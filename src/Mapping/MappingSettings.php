@@ -1,10 +1,10 @@
 <?php
 declare(strict_types=1);
 
-namespace WicketLockbox\Mapping;
+namespace WicketImporter\Mapping;
 
 use HyperFields\HyperFields;
-use WicketLockbox\BulkImport\Database\DbInstaller;
+use WicketImporter\BulkImport\Database\DbInstaller;
 
 class MappingSettings
 {
@@ -22,7 +22,7 @@ class MappingSettings
 			return;
 		}
 
-		$options_page = HyperFields::makeOptionPage( 'Lockbox Mappings', 'wicket-wp-lockbox-mappings' );
+		$options_page = HyperFields::makeOptionPage( 'Import Mappings', 'wicket-wp-importer-mappings' );
 		$options_page->setMenuTitle( 'Mappings' );
 		$options_page->setParentSlug( 'wicket-settings' );
 		$options_page->setOptionName( DbInstaller::MAPPINGS_OPTION );
