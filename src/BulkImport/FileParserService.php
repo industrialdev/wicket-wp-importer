@@ -38,7 +38,13 @@ final class FileParserService
 
 		$precheck = $this->precheckFile( $path );
 		if ( $precheck !== null ) {
-			return new ParseResult( rows: [], missingHeaders: [], totalCount: 0, error: $precheck );
+			return new ParseResult(
+				rows: [],
+				missingHeaders: [],
+				totalCount: 0,
+				error: $precheck['message'],
+				sizeExceeded: $precheck['size_exceeded'],
+			);
 		}
 
 		$handle = @fopen( $path, 'rb' );
@@ -57,12 +63,18 @@ final class FileParserService
 	}
 
 	/**
-	 * Validate existence and size before opening. Returns an error string or null.
+	 * Validate existence and size before opening. Returns a failure shape
+	 * (message + whether it was a size rejection) or null when the file is OK.
+	 *
+	 * @return array{message: string, size_exceeded: bool}|null
 	 */
-	private function precheckFile( string $path ): ?string
+	private function precheckFile( string $path ): ?array
 	{
 		if ( ! is_file( $path ) ) {
-			return 'CSV file not found.';
+			return [
+				'message'       => 'CSV file not found.',
+				'size_exceeded' => false,
+			];
 		}
 
 		/** @var int $maxSize Filterable max upload size in bytes. */
@@ -70,11 +82,14 @@ final class FileParserService
 		$size    = filesize( $path );
 
 		if ( $size !== false && $size > $maxSize ) {
-			return sprintf(
-				'CSV file (%1$s) exceeds the maximum allowed size (%2$s).',
-				size_format( (float) $size ),
-				size_format( (float) $maxSize )
-			);
+			return [
+				'message'       => sprintf(
+					'CSV file (%1$s) exceeds the maximum allowed size (%2$s).',
+					size_format( (float) $size ),
+					size_format( (float) $maxSize )
+				),
+				'size_exceeded' => true,
+			];
 		}
 
 		return null;

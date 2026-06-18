@@ -68,9 +68,10 @@ final class WicketImporter
 		// Instantiate classes that register their own hooks
 		new \WicketImporter\Admin\ImportAdminPage();
 		new \WicketImporter\Assets();
+		new \WicketImporter\BulkImport\Rest\UploadController();
 		new \WicketImporter\Mapping\MappingSettings();
 
-		// TODO Phase 1: ImportPipeline, UploadController
+		// TODO Phase 1: ImportPipeline
 		// TODO Phase 4: Cheque\BatchProcessor, Cheque\Rest\ProcessController
 	}
 
