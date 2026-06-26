@@ -13,6 +13,7 @@ use WicketImporter\BulkImport\Database\ImportStagingTable;
  * @method \WicketImporter\BulkImport\Database\ImportStagingTable StagingTable()
  * @method \WicketImporter\BulkImport\FileParserService FileParser()
  * @method \WicketImporter\BulkImport\ValidationService Validation()
+ * @method \WicketImporter\BulkImport\ImportAdapter ImportAdapter()
  */
 final class WicketImporter
 {
@@ -63,6 +64,7 @@ final class WicketImporter
 			'StagingTable' => new ImportStagingTable(),
 			'FileParser'   => new \WicketImporter\BulkImport\FileParserService( $logger ),
 			'Validation'   => new \WicketImporter\BulkImport\ValidationService( $logger ),
+			'ImportAdapter' => new \WicketImporter\BulkImport\ImportAdapter(),
 		];
 
 		// Instantiate classes that register their own hooks
