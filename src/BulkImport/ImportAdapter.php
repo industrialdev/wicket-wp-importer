@@ -5,6 +5,7 @@ namespace WicketImporter\BulkImport;
 
 use Wicket_Memberships\Membership_Controller;
 use Wicket_Memberships\Membership_Tier;
+use Wicket_Memberships\Utilities;
 
 /**
  * Creates the wicket_membership CPT for one import row by delegating to the

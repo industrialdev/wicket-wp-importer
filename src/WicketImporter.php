@@ -14,6 +14,9 @@ use WicketImporter\BulkImport\Database\ImportStagingTable;
  * @method \WicketImporter\BulkImport\FileParserService FileParser()
  * @method \WicketImporter\BulkImport\ValidationService Validation()
  * @method \WicketImporter\BulkImport\ImportAdapter ImportAdapter()
+ * @method \WicketImporter\BulkImport\WicketMdpClient MdpClient()
+ * @method \WicketImporter\BulkImport\PersonResolver PersonResolver()
+ * @method \WicketImporter\BulkImport\ImportPipeline Pipeline()
  */
 final class WicketImporter
 {
@@ -56,15 +59,20 @@ final class WicketImporter
 		}
 
 		// Core service instances
-		$logger = new \WicketImporter\Services\Logger();
+		$logger         = new \WicketImporter\Services\Logger();
+		$mdp_client     = new \WicketImporter\BulkImport\WicketMdpClient( $logger );
+		$person_resolver = new \WicketImporter\BulkImport\PersonResolver( $mdp_client );
 
 		$this->instances = [
-			'Logger'       => $logger,
-			'Mappings'     => new \WicketImporter\Mapping\MappingRepository(),
-			'StagingTable' => new ImportStagingTable(),
-			'FileParser'   => new \WicketImporter\BulkImport\FileParserService( $logger ),
-			'Validation'   => new \WicketImporter\BulkImport\ValidationService( $logger ),
-			'ImportAdapter' => new \WicketImporter\BulkImport\ImportAdapter(),
+			'Logger'         => $logger,
+			'Mappings'       => new \WicketImporter\Mapping\MappingRepository(),
+			'StagingTable'   => new ImportStagingTable(),
+			'FileParser'     => new \WicketImporter\BulkImport\FileParserService( $logger ),
+			'Validation'     => new \WicketImporter\BulkImport\ValidationService( $logger ),
+			'ImportAdapter'  => new \WicketImporter\BulkImport\ImportAdapter(),
+			'MdpClient'      => $mdp_client,
+			'PersonResolver' => $person_resolver,
+			'Pipeline'       => new \WicketImporter\BulkImport\ImportPipeline( $logger, $person_resolver ),
 		];
 
 		// Instantiate classes that register their own hooks
