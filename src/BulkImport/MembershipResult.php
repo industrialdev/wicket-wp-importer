@@ -47,4 +47,14 @@ final class MembershipResult
 	{
 		return $this->status === self::STATUS_CREATED;
 	}
+
+	public function isSkipped(): bool
+	{
+		return $this->status === self::STATUS_SKIPPED;
+	}
+
+	public function isFailed(): bool
+	{
+		return $this->status === self::STATUS_FAILED;
+	}
 }

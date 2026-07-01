@@ -18,14 +18,18 @@ final class ValidationResult
 	public const STATUS_WARNING = 'warning';
 
 	/**
-	 * @param string        $status       One of the STATUS_* constants.
-	 * @param string|null   $message      Human-readable reason for non-valid results.
-	 * @param list<string>  $flaggedFields Column keys that failed validation.
+	 * @param string                   $status        One of the STATUS_* constants.
+	 * @param string|null              $message       Human-readable reason for non-valid results (all flagged fields combined).
+	 * @param list<string>             $flaggedFields Column keys that failed validation.
+	 * @param array<string,string>     $fieldMessages Per-field message map (column key => message). Lets the
+	 *                                              individual form pin the correct message to each input
+	 *                                              instead of showing the combined string on every field.
 	 */
 	public function __construct(
 		public readonly string $status,
 		public readonly ?string $message = null,
 		public readonly array $flaggedFields = [],
+		public readonly array $fieldMessages = [],
 	) {
 	}
 

@@ -4,6 +4,7 @@ declare(strict_types=1);
 namespace WicketImporter\BulkImport;
 
 use WicketImporter\Services\Logger;
+use WicketImporter\BulkImport\MemberData;
 use WicketImporter\ValueObjects\ColumnDefinition;
 use WicketImporter\ValueObjects\CsvRow;
 use WicketImporter\ValueObjects\ValidationResult;
@@ -234,29 +235,44 @@ final class ImportPipeline
 	}
 
 	/**
-	 * Phase 3 (Task 12.1 shell / 12.4 row loop).
+	 * Phase 3 (Task 12.1 + 12.4): inline destructive import.
 	 *
-	 * Guards + timing. The per-row destructive loop (resolve person via
-	 * PersonResolver::resolve() -> ImportAdapter::create()) is Task 12.4 and is
-	 * not yet wired; this method currently enforces the inline-execution
-	 * contract and returns once 12.4 is implemented.
+	 * Per-row flow:
+	 *   1. extract person identity (wicket_import_extract_person filter or guess)
+	 *   2. PersonResolver::resolve() -> PersonResolutionResult
+	 *   3. On RESOLVED, fire wicket_import_post_person_resolved (12.6) so
+	 *      extensions can react to the resolved person before membership work.
+	 *   4. On RESOLVED, fire wicket_import_resolve_membership_tier (12.7) so
+	 *      the extension (OBA) can return a tier post ID. WP_Error from the
+	 *      filter short-circuits the row as `failed`.
+	 *   5. On RESOLVED, build MemberData and call ImportAdapter::create()
+	 *      (which fires 12.5 + wicket_import_create_subscription + 12.8).
+	 *   6. Map the result back onto staging: updatePersonUuid + updateImportResult.
+	 *      `imported` for Scenario A (create), `updated` for Scenario B (merge,
+	 *      when mdp_uuid was already set by the conflict pre-pass).
+	 *
+	 * Per-row error handling (12.1): every row is isolated by a try/catch. A
+	 * failure in one row marks it `failed` and the batch continues; nothing in
+	 * one row's pipeline can halt the session.
 	 *
 	 * Guards:
 	 *   - set_time_limit(0) + ignore_user_abort(true): the inline import can
 	 *     run long; do not let PHP's default 30s cap or a client disconnect
 	 *     truncate a batch mid-membership.
-	 *   - countPendingInSession() > WICKET_IMPORT_INLINE_MAX_ROWS: this phase
-	 *     runs on the request thread, so cap it (200 default). Larger batches
-	 *     need a chunked/AS path (out of scope for OBA inline flow).
+	 *   - countImportableInSession() > WICKET_IMPORT_INLINE_MAX_ROWS: this
+	 *     phase runs on the request thread, so cap it (200 default). Larger
+	 *     batches need a chunked/AS path (out of scope for OBA inline flow).
 	 *   - Duration is timed and logged for capacity planning.
 	 *
 	 * @param string $sessionId      Session to import.
 	 * @param bool   $skipFlagged    When true, rows flagged at validation are
-	 *                               skipped (default). Reserved for 12.4.
+	 *                               skipped (default). The inline cap already
+	 *                               excludes them; this is the public contract.
 	 *
-	 * @return \WP_Error|true True on completion, WP_Error if the guard rejects.
+	 * @return array{summary:array<string,int>, duration_sec:float}|\WP_Error
+	 *               Tally on completion, WP_Error if the cap guard rejects.
 	 */
-	public function runImport( string $sessionId, bool $skipFlagged = true ): \WP_Error|true
+	public function runImport( string $sessionId, bool $skipFlagged = true ): \WP_Error|array
 	{
 		$started = microtime( true );
 
@@ -269,7 +285,9 @@ final class ImportPipeline
 			ignore_user_abort( true );
 		}
 
-		$staging         = Plugin::get_instance()->StagingTable();
+		$plugin          = Plugin::get_instance();
+		$staging         = $plugin->StagingTable();
+		$adapter         = $plugin->ImportAdapter();
 		$importableCount = $staging->countImportableInSession( $sessionId );
 
 		if ( $importableCount > WICKET_IMPORT_INLINE_MAX_ROWS ) {
@@ -283,28 +301,202 @@ final class ImportPipeline
 			);
 		}
 
-		// TODO Task 12.4: per-row destructive loop.
-		//   For each pending valid row:
-		//     1. extract person via wicket_import_extract_person
-		//     2. PersonResolver->resolve($person, $row, $stagingId)
-		//     3. map PersonResolutionResult onto staging (updatePersonUuid +
-		//        updateImportResult with resolved/email_conflict/skipped/failed)
-		//     4. on RESOLVED: build MemberData, ImportAdapter->create()
-		//     5. wrap each row in try/catch -> mark failed, continue batch.
+		$tally = [
+			'total'         => 0,
+			'imported'      => 0,
+			'updated'       => 0,
+			'skipped'       => 0,
+			'needs_review'  => 0,
+			'failed'        => 0,
+			'conflicts'     => 0,
+		];
+
+		// Atomic claim: transition import_status 'pending' -> 'processing' for
+		// every importable row in the session. The UPDATE is atomic, so two
+		// parallel /run calls on the same session can't both drive
+		// ImportAdapter::create() on the same rows — the loser's claim returns
+		// 0 affected rows and short-circuits to the empty-tally fast path.
+		$claimedCount = $staging->claimImportableInSession( $sessionId );
+
+		// No-op fast path: nothing claimed (either nothing to process, or a
+		// concurrent /run beat us to it). Return empty tally.
+		if ( $claimedCount === 0 ) {
+			$duration = round( microtime( true ) - $started, 3 );
+			$this->logger->info( 'runImport complete (no rows claimed).', [
+				'session_id'     => $sessionId,
+				'duration_sec'   => $duration,
+				'rows_processed' => 0,
+			] );
+			return [ 'summary' => $tally, 'duration_sec' => $duration ];
+		}
+
+		$rows = $staging->getProcessingBySession( $sessionId );
+
+		foreach ( $rows as $row ) {
+			$stagingId = (int) $row['id'];
+			$rowData   = $this->decodeRawData( $row );
+			$tally['total']++;
+
+			// Track whether the MDP person was touched in the current row's
+			// pipeline. Set true after PersonResolver->resolve() returns
+			// RESOLVED (Scenario A create OR Scenario B merge). Used by the
+			// post-RESOLVED failure branches (12.7 WP_Error, adapter failed,
+			// per-row exception) to mark the row 'needs_review' instead of
+			// 'failed' — a touched MDP person + a missing/stale WP
+			// membership is exactly the orphan situation an admin must
+			// address manually, not a row that the pipeline can safely
+			// re-process on its own.
+			$personTouched = false;
+
+			try {
+				$person = $this->extractPerson( $rowData );
+				if ( $person === null ) {
+					$staging->updateImportResult(
+						$stagingId,
+						'failed',
+						'Could not extract person identity from row (no email).'
+					);
+					$tally['failed']++;
+					continue;
+				}
+
+				$resolution = $this->personResolver->resolve( $person, $rowData, $stagingId );
+				$personTouched = ( $resolution->status === PersonResolutionResult::STATUS_RESOLVED );
+
+				switch ( $resolution->status ) {
+					case PersonResolutionResult::STATUS_RESOLVED:
+						$uuid        = (string) $resolution->uuid;
+						$mdpEntry    = is_array( $resolution->person )
+							? $resolution->person
+							: [ 'id' => $uuid ];
+						// MemberData's contract is FLAT keys (first_name, last_name,
+						// email) per its own docblock — ImportAdapter reads those
+						// directly (resolveUserId, buildMapping). PersonResolver hands
+						// back the MDP entry shape (id + attributes) which would leave
+						// every flat key as null and break WP user + CPT seeding.
+						// Merge the flat identity (from extractPerson) with the MDP
+						// entry; flat wins because it's what the contract requires,
+						// and id/attributes are preserved for hook consumers (12.6 / 12.8)
+						// that want the full MDP payload.
+						$personEntry = array_merge(
+							[
+								'first_name' => (string) ( $person['first_name'] ?? '' ),
+								'last_name'  => (string) ( $person['last_name'] ?? '' ),
+								'email'      => (string) ( $person['email'] ?? '' ),
+							],
+							$mdpEntry
+						);
+						$hadUuid     = ! empty( $row['mdp_uuid'] );
+
+						// 12.6: notify extensions that an MDP person is now resolved
+						// (created or merged). 4-arg signature mirrors 12.8 (post-
+						// membership_create) for consistency so extensions can rely
+						// on the same (uuid, person, row, stagingId) shape across
+						// the lifecycle.
+						do_action( 'wicket_import_post_person_resolved', $uuid, $personEntry, $rowData, $stagingId );
+
+						// 12.7: extension returns the tier post ID, or WP_Error
+						// to skip the row with an error reason. Default = 0 (no
+						// extension override); ImportAdapter treats tier=0 as a
+						// failed row with a precise reason downstream.
+						// WP_Error here is a needs_review, not a failed: the
+						// person is already created/merged in the MDP and a
+						// tier-resolution failure means the row cannot be
+						// re-run safely without admin intervention.
+						$tierResult = apply_filters( 'wicket_import_resolve_membership_tier', 0, $rowData );
+						if ( is_wp_error( $tierResult ) ) {
+							$staging->updateImportResult(
+								$stagingId,
+								'needs_review',
+								sprintf( 'Tier resolution failed: %s', $tierResult->get_error_message() )
+							);
+							$tally['needs_review']++;
+							break;
+						}
+						$tierId = (int) $tierResult;
+
+						$memberData = new MemberData(
+							$uuid,
+							$personEntry,
+							$rowData,
+							$tierId,
+							$stagingId
+						);
+
+						$staging->updatePersonUuid( $stagingId, $uuid );
+						$adapterResult = $adapter->create( $memberData );
+
+						if ( $adapterResult->isCreated() ) {
+							// Scenario A (create) -> 'imported'. Scenario B (merge,
+							// mdp_uuid was set by runConflictCheck on entry) -> 'updated'.
+							$status = $hadUuid ? 'updated' : 'imported';
+							$staging->updateImportResult( $stagingId, $status );
+							if ( $status === 'imported' ) {
+								$tally['imported']++;
+							} else {
+								$tally['updated']++;
+							}
+						} elseif ( $adapterResult->isSkipped() ) {
+							$staging->updateImportResult( $stagingId, 'skipped', $adapterResult->message );
+							$tally['skipped']++;
+						} else {
+							// Adapter returned a non-skipped, non-created
+							// failure after the MDP person was touched. Mark
+							// needs_review so an admin can address the
+							// orphaned person + missing WP membership.
+							$staging->updateImportResult( $stagingId, 'needs_review', $adapterResult->message );
+							$tally['needs_review']++;
+						}
+						break;
+
+					case PersonResolutionResult::STATUS_EMAIL_CONFLICT:
+						$staging->updateImportResult( $stagingId, 'email_conflict', $resolution->message );
+						$tally['conflicts']++;
+						break;
+
+					case PersonResolutionResult::STATUS_SKIPPED_ACTIVE_MEMBERSHIP:
+						$staging->updateImportResult( $stagingId, 'skipped_active_membership', $resolution->message );
+						$tally['skipped']++;
+						break;
+
+					case PersonResolutionResult::STATUS_FAILED:
+					default:
+						$staging->updateImportResult( $stagingId, 'failed', $resolution->message );
+						$tally['failed']++;
+						break;
+				}
+			} catch ( \Throwable $e ) {
+				// Per-row isolation: a thrown exception in one row's pipeline
+				// must not halt the batch. If the person was already touched
+				// (resolve returned RESOLVED before the throw), the row lands
+				// as needs_review — the orphan concern is the same as the
+				// adapter-failed branch. Pre-resolve throws land as failed
+				// because no person was touched.
+				$status  = $personTouched ? 'needs_review' : 'failed';
+				$tallyKey = $personTouched ? 'needs_review' : 'failed';
+				$this->logger->error( sprintf( 'runImport row threw; marking %s and continuing.', $status ), [
+					'session_id' => $sessionId,
+					'row_id'     => $stagingId,
+					'error'      => $e->getMessage(),
+				] );
+				$staging->updateImportResult( $stagingId, $status, sprintf( 'Pipeline exception: %s', $e->getMessage() ) );
+				$tally[ $tallyKey ]++;
+			}
+		}
 
 		$duration = round( microtime( true ) - $started, 3 );
-		$this->logger->info(
-			'runImport complete.',
-			[
-				'session_id'     => $sessionId,
-				'importable_rows' => $importableCount,
-				'skip_flagged'   => $skipFlagged,
-				'duration_sec'   => $duration,
-				'rows_processed' => 0, // populated by 12.4
-			]
-		);
+		// Escalate to warning when any row failed so failed batches are
+		// greppable in the WC log without filtering by summary (round-2 N6).
+		$logMethod = $tally['failed'] > 0 ? 'warning' : 'info';
+		$this->logger->{$logMethod}( 'runImport complete.', [
+			'session_id'     => $sessionId,
+			'duration_sec'   => $duration,
+			'rows_processed' => $tally['total'],
+			'summary'        => $tally,
+			'skip_flagged'   => $skipFlagged,
+		] );
 
-		return true;
+		return [ 'summary' => $tally, 'duration_sec' => $duration ];
 	}
 
 	// ---------------------------------------------------------------------
@@ -321,7 +513,7 @@ final class ImportPipeline
 	private function resolveColumns(): array
 	{
 		/** @var list<ColumnDefinition> $columns */
-		$columns = apply_filters( 'wicket_import_csv_columns', [], [ 'flow' => 'bulk' ] );
+		$columns = apply_filters( 'wicket_import_csv_columns', [], [ 'context' => 'bulk' ] );
 		return $columns;
 	}
 

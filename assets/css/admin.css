@@ -1,1 +1,357 @@
-/* Wicket Importer Admin Styles */
+/* Wicket Importer Admin Styles (Task 7 skeleton) */
+
+.wicket-importer {
+	max-width: 1100px;
+}
+
+/* ---- Meta slots (Task 7.2) ------------------------------------------ */
+
+.wicket-importer-meta {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 12px;
+	margin: 16px 0;
+}
+
+.wicket-importer-meta-slot {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	padding: 10px 16px;
+	background: #fff;
+	border: 1px solid #c3c4c7;
+	border-radius: 4px;
+	min-width: 120px;
+}
+
+.wicket-importer-meta-label {
+	font-size: 12px;
+	color: #646970;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+}
+
+.wicket-importer-meta-value {
+	font-size: 20px;
+	font-weight: 600;
+	color: #1d2327;
+}
+
+/* ---- Upload type toggle (Task 7.2) ---------------------------------- */
+
+.wicket-importer-upload-type {
+	display: flex;
+	gap: 8px;
+	margin: 16px 0;
+}
+
+.wicket-importer-toggle {
+	position: relative;
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	padding: 8px 16px;
+	background: #fff;
+	border: 1px solid #c3c4c7;
+	border-radius: 4px;
+	cursor: pointer;
+	user-select: none;
+}
+
+.wicket-importer-toggle input[type="radio"] {
+	margin: 0;
+}
+
+.wicket-importer-toggle input:checked + span {
+	font-weight: 600;
+	color: #2271b1;
+}
+
+.wicket-importer-upload-section {
+	background: #fff;
+	border: 1px solid #c3c4c7;
+	border-radius: 4px;
+	padding: 24px;
+	margin-top: 12px;
+}
+
+/* ---- Summary bar (validation / confirmation) ------------------------ */
+
+.wicket-importer-summary-bar {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 8px;
+	margin: 16px 0;
+	padding: 12px 16px;
+	background: #fff;
+	border: 1px solid #c3c4c7;
+	border-radius: 4px;
+	font-size: 14px;
+}
+
+.wicket-importer-summary-stat {
+	font-weight: 600;
+}
+
+.wicket-importer-summary-stat.is-valid   { color: #00a32a; }
+.wicket-importer-summary-stat.is-flagged { color: #d63638; }
+.wicket-importer-summary-stat.is-review  { color: #996800; }
+
+.wicket-importer-summary-sep {
+	color: #c3c4c7;
+}
+
+/* ---- Actions row ---------------------------------------------------- */
+
+.wicket-importer-actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+	margin-top: 16px;
+}
+
+/* ---- Notices + placeholders ----------------------------------------- */
+
+.wicket-importer-notices {
+	margin: 16px 0;
+}
+
+.wicket-importer-notices .notice {
+	margin: 0 0 8px;
+}
+
+.wicket-importer-placeholder {
+	padding: 24px;
+	background: #f6f7f7;
+	border: 1px dashed #c3c4c7;
+	border-radius: 4px;
+	color: #646970;
+	font-style: italic;
+	text-align: center;
+}
+
+.wicket-importer-placeholder code {
+	font-style: normal;
+}
+
+/* ---- CSV dropzone (Task 8.1) --------------------------------------- */
+
+.wicket-importer-dropzone {
+	position: relative;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	min-height: 140px;
+	padding: 32px;
+	margin-bottom: 16px;
+	background: #f6f7f7;
+	border: 2px dashed #c3c4c7;
+	border-radius: 4px;
+	cursor: pointer;
+	text-align: center;
+	transition: border-color 0.15s, background-color 0.15s;
+}
+
+.wicket-importer-dropzone:hover,
+.wicket-importer-dropzone:focus,
+.wicket-importer-dropzone.is-dragover {
+	border-color: #2271b1;
+	background: #f0f6fc;
+}
+
+.wicket-importer-dropzone.is-dragover {
+	border-style: solid;
+}
+
+.wicket-importer-dropzone-prompt {
+	margin: 0;
+	color: #50575e;
+	font-size: 14px;
+}
+
+.wicket-importer-dropzone-icon {
+	font-size: 28px;
+	line-height: 1;
+	color: #2271b1;
+}
+
+.wicket-importer-file-input {
+	display: none;
+}
+
+/* ---- File preview (Task 8.1) -------------------------------------- */
+
+.wicket-importer-file-preview {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 12px;
+	padding: 12px 16px;
+	margin-bottom: 16px;
+	background: #fff;
+	border: 1px solid #c3c4c7;
+	border-radius: 4px;
+}
+
+.wicket-importer-file-meta {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: baseline;
+	gap: 8px;
+	flex: 1;
+}
+
+.wicket-importer-file-name {
+	font-size: 14px;
+}
+
+.wicket-importer-file-size,
+.wicket-importer-file-rows {
+	font-size: 12px;
+	color: #646970;
+}
+
+.wicket-importer-file-size::before,
+.wicket-importer-file-rows::before {
+	content: "· ";
+	color: #c3c4c7;
+}
+
+.wicket-importer-clear-btn {
+	width: 28px;
+	height: 28px;
+	padding: 0;
+	line-height: 1;
+	font-size: 18px;
+	color: #646970;
+}
+
+.wicket-importer-clear-btn:hover {
+	color: #d63638;
+}
+
+.wicket-importer-dropzone.is-busy {
+	pointer-events: none;
+	opacity: 0.6;
+}
+
+/* ---- Upload buttons (Task 8.2/8.3) -------------------------------- */
+
+.wicket-importer-upload-section .wicket-importer-actions {
+	margin-top: 8px;
+}
+
+.wicket-importer-template-btn {
+	font-weight: 400;
+}
+
+/* ---- Flagged-rows table (Task 9.2) --------------------------------- */
+
+.wicket-importer-table-wrap {
+	overflow-x: auto;
+	margin: 16px 0;
+}
+
+.wicket-importer-flagged-table th,
+.wicket-importer-flagged-table td {
+	vertical-align: top;
+	word-break: break-word;
+}
+
+.wicket-importer-cell-flagged {
+	background: #fff7e0;
+	font-weight: 600;
+	box-shadow: inset 4px 0 0 #dba617;
+}
+
+/* ---- Status badges (Task 9.2) ------------------------------------- */
+
+.wicket-importer-badge {
+	display: inline-block;
+	padding: 2px 10px;
+	border-radius: 10px;
+	font-size: 12px;
+	font-weight: 600;
+	line-height: 1.6;
+	text-transform: uppercase;
+	letter-spacing: 0.02em;
+}
+
+.wicket-importer-badge-error {
+	background: #facfd2;
+	color: #8a2424;
+}
+
+.wicket-importer-badge-warning {
+	background: #f5dab2;
+	color: #7d5224;
+}
+
+.wicket-importer-badge-info {
+	background: #dcdcde;
+	color: #3c434a;
+}
+
+/* ---- Individual form (Task 11) ------------------------------------- */
+
+.wicket-importer-individual-form {
+	max-width: 700px;
+}
+
+.wicket-importer-form-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+	gap: 16px;
+	margin-bottom: 16px;
+}
+
+.wicket-importer-form-field {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+}
+
+.wicket-importer-form-field label {
+	font-weight: 600;
+	font-size: 13px;
+}
+
+.wicket-importer-form-field label .required {
+	color: #d63638;
+	margin-left: 2px;
+}
+
+.wicket-importer-form-field input,
+.wicket-importer-form-field select,
+.wicket-importer-form-field textarea {
+	width: 100%;
+	padding: 6px 8px;
+	border: 1px solid #8c8f94;
+	border-radius: 4px;
+	font-size: 14px;
+}
+
+.wicket-importer-form-field.has-error input,
+.wicket-importer-form-field.has-error select,
+.wicket-importer-form-field.has-error textarea {
+	border-color: #d63638;
+	background: #fcf0f1;
+}
+
+.wicket-importer-field-error {
+	margin: 4px 0 0;
+	padding: 0;
+	color: #8a2424;
+	font-size: 12px;
+}
+
+.wicket-importer-badge-success {
+	background: #b8e6bf;
+	color: #1a6c2e;
+}
+
+.wicket-importer-badge-neutral {
+	background: #e0e0e0;
+	color: #3c434a;
+}

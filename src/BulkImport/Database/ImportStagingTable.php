@@ -127,7 +127,7 @@ class ImportStagingTable
 		global $wpdb;
 		return $wpdb->get_results(
 			$wpdb->prepare(
-				"SELECT * FROM {$this->table_name} WHERE session_id = %s AND validation_status IN ('invalid', 'duplicate', 'warning', 'conflict') ORDER BY row_index ASC",
+				"SELECT * FROM {$this->table_name} WHERE session_id = %s AND validation_status IN ('invalid', 'duplicate', 'warning') ORDER BY row_index ASC",
 				$session_id
 			),
 			ARRAY_A
@@ -135,18 +135,122 @@ class ImportStagingTable
 	}
 
 	/**
-	 * Get valid rows for a session.
+	 * Get rows in a session that passed validation AND are still pending
+	 * import: validation_status = 'valid' AND import_status = 'pending'.
+	 *
+	 * This is the canonical "ready to import" set. The pending filter is
+	 * load-bearing for re-run safety (Task 12.3 / 12.4): a re-run of the
+	 * pipeline must NOT re-process rows that already moved to a terminal
+	 * import_status (imported, updated, skipped, failed, email_conflict,
+	 * skipped_active_membership, needs_review) on a prior run.
+	 *
+	 * Mirrors getImportableRowsBySession's filter, but returns the columns
+	 * runConflictCheck needs (which is the only caller). For the row loop
+	 * that needs every column on importable rows, see getImportableRowsBySession.
+	 *
+	 * @return list<array<string,mixed>>
 	 */
 	public function getValidBySession( string $session_id ): array
 	{
 		global $wpdb;
-		return $wpdb->get_results(
+		$rows = $wpdb->get_results(
 			$wpdb->prepare(
-				"SELECT * FROM {$this->table_name} WHERE session_id = %s AND validation_status = 'valid' ORDER BY row_index ASC",
+				"SELECT * FROM {$this->table_name} WHERE session_id = %s AND validation_status = 'valid' AND import_status = 'pending' ORDER BY row_index ASC",
 				$session_id
 			),
 			ARRAY_A
 		);
+		return is_array( $rows ) ? array_values( $rows ) : [];
+	}
+
+	/**
+	 * Get rows in a session that the destructive import phase will actually
+	 * process: validation_status = 'valid' AND import_status = 'pending'.
+	 *
+	 * Distinct from getValidBySession() (which only filters on validation_status).
+	 * Required for Task 12.4 so a re-run of runImport skips rows that already
+	 * moved to a terminal import_status on a previous run (imported, updated,
+	 * skipped, failed, email_conflict, skipped_active_membership, needs_review).
+	 *
+	 * @return list<array<string,mixed>>
+	 */
+	public function getImportableRowsBySession( string $session_id ): array
+	{
+		global $wpdb;
+		$rows = $wpdb->get_results(
+			$wpdb->prepare(
+				"SELECT * FROM {$this->table_name} WHERE session_id = %s AND validation_status = 'valid' AND import_status = 'pending' ORDER BY row_index ASC",
+				$session_id
+			),
+			ARRAY_A
+		);
+		return is_array( $rows ) ? array_values( $rows ) : [];
+	}
+
+	/**
+	 * Atomically claim all importable rows in a session by transitioning
+	 * import_status from 'pending' to 'processing'. Required for the
+	 * concurrency guard on POST /import/session/{id}/run (Task 12.9): two
+	 * parallel /run calls on the same session both read the same pending
+	 * rows and both drive ImportAdapter::create(), which races on
+	 * create_mdp_record + create_local_membership_record. The atomic UPDATE
+	 * ensures only one claim can transition each row; the loser's claim
+	 * returns 0 affected rows and short-circuits.
+	 *
+	 * Returns the number of rows claimed (0 = nothing to do). The claim
+	 * transitions through 'processing'; runImport's per-row updateImportResult
+	 * moves each row to its terminal status (imported / updated / skipped /
+	 * failed / etc.) as the row finishes.
+	 *
+	 * @return int Affected-row count.
+	 */
+	public function claimImportableInSession( string $session_id ): int
+	{
+		global $wpdb;
+		$affected = $wpdb->query(
+			$wpdb->prepare(
+				"UPDATE {$this->table_name} SET import_status = 'processing' WHERE session_id = %s AND validation_status = 'valid' AND import_status = 'pending'",
+				$session_id
+			)
+		);
+		return is_int( $affected ) ? $affected : 0;
+	}
+
+	/**
+	 * Check if a session has any rows currently in 'processing' status.
+	 * True while a /run request is in-flight on the session. Used by
+	 * handleRun to return 409 import_session_active on re-entry.
+	 */
+	public function isSessionRunning( string $session_id ): bool
+	{
+		global $wpdb;
+		$count = (int) $wpdb->get_var(
+			$wpdb->prepare(
+				"SELECT COUNT(*) FROM {$this->table_name} WHERE session_id = %s AND import_status = 'processing'",
+				$session_id
+			)
+		);
+		return $count > 0;
+	}
+
+	/**
+	 * Get the rows a session has claimed (in 'processing' status). Mirrors
+	 * getImportableRowsBySession but filters on 'processing' instead of
+	 * 'pending', used by runImport after claimImportableInSession.
+	 *
+	 * @return list<array<string,mixed>>
+	 */
+	public function getProcessingBySession( string $session_id ): array
+	{
+		global $wpdb;
+		$rows = $wpdb->get_results(
+			$wpdb->prepare(
+				"SELECT * FROM {$this->table_name} WHERE session_id = %s AND import_status = 'processing' ORDER BY row_index ASC",
+				$session_id
+			),
+			ARRAY_A
+		);
+		return is_array( $rows ) ? array_values( $rows ) : [];
 	}
 
 	/**
@@ -285,7 +389,6 @@ class ImportStagingTable
 			'invalid'   => 0,
 			'duplicate' => 0,
 			'warning'   => 0,
-			'conflict'  => 0,
 			'pending'   => 0,
 		];
 
@@ -314,14 +417,16 @@ class ImportStagingTable
 		);
 
 		$summary = [
-			'pending'            => 0,
-			'imported'           => 0,
-			'updated'            => 0,
-			'skipped'            => 0,
-			'failed'             => 0,
-			'phase1_complete'    => 0,
-			'phase2_complete'    => 0,
-			'needs_review'       => 0,
+			'pending'                 => 0,
+			'imported'                => 0,
+			'updated'                 => 0,
+			'skipped'                 => 0,
+			'failed'                  => 0,
+			'email_conflict'          => 0,
+			'skipped_active_membership' => 0,
+			'phase1_complete'         => 0,
+			'phase2_complete'         => 0,
+			'needs_review'            => 0,
 		];
 
 		foreach ( $results as $row ) {

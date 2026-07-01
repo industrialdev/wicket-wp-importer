@@ -82,6 +82,7 @@ final class ValidationService
 			status: $worst,
 			message: implode( ' ', array_unique( array_values( $messages ) ) ),
 			flaggedFields: array_keys( $flagged ),
+			fieldMessages: $messages,
 		);
 	}
 
