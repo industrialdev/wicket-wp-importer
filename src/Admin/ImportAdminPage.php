@@ -51,7 +51,16 @@ class ImportAdminPage
 
 	public function __construct()
 	{
-		add_action( 'admin_menu', [ $this, 'registerMenu' ] );
+		// Priority 20 so the parent 'wicket-settings' top-level menu (registered by
+		// wicket-wp-base-plugin / WPSettings at admin_menu) has run first. Without this,
+		// add_submenu_page() resolves the importer's hookname using a different
+		// page_type than the later access check does (registration sees no
+		// admin_page_hooks entry for the parent yet, the access check sees the
+		// resolved 'wicket' title), producing an orphan $_registered_pages key
+		// and a 'Sorry, you are not allowed to access this page' denial. Matches
+		// the convention used by every other Wicket submenu (gravity-forms p20,
+		// account-centre p99, financial-fields p999).
+		add_action( 'admin_menu', [ $this, 'registerMenu' ], 20 );
 	}
 
 	/**
