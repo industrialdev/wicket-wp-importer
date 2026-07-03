@@ -1,4 +1,5 @@
 <?php
+
 declare(strict_types=1);
 
 namespace WicketImporter;
@@ -20,79 +21,80 @@ use WicketImporter\BulkImport\Database\ImportStagingTable;
  */
 final class WicketImporter
 {
-	/**
-	 * Singleton instance.
-	 */
-	private static ?WicketImporter $instance = null;
+    /**
+     * Singleton instance.
+     */
+    private static ?WicketImporter $instance = null;
 
-	/**
-	 * Service instances registered in the plugin.
-	 */
-	private array $instances = [];
+    /**
+     * Service instances registered in the plugin.
+     */
+    private array $instances = [];
 
-	/**
-	 * Get the singleton instance.
-	 */
-	public static function get_instance(): self
-	{
-		if ( null === self::$instance ) {
-			self::$instance = new self();
-		}
-		return self::$instance;
-	}
+    /**
+     * Get the singleton instance.
+     */
+    public static function get_instance(): self
+    {
+        if (null === self::$instance) {
+            self::$instance = new self();
+        }
 
-	/**
-	 * Static wrapper for hooks setup.
-	 */
-	public static function plugin_setup(): void
-	{
-		self::get_instance()->setup();
-	}
+        return self::$instance;
+    }
 
-	/**
-	 * Setup and register all services and hooks.
-	 */
-	private function setup(): void
-	{
-		if ( is_admin() || ( defined( 'WP_CLI' ) && WP_CLI ) ) {
-			\WicketImporter\BulkImport\Database\DbInstaller::checkSchemaVersion();
-		}
+    /**
+     * Static wrapper for hooks setup.
+     */
+    public static function plugin_setup(): void
+    {
+        self::get_instance()->setup();
+    }
 
-		// Core service instances
-		$logger         = new \WicketImporter\Services\Logger();
-		$mdp_client     = new \WicketImporter\BulkImport\WicketMdpClient( $logger );
-		$person_resolver = new \WicketImporter\BulkImport\PersonResolver( $mdp_client );
+    /**
+     * Setup and register all services and hooks.
+     */
+    private function setup(): void
+    {
+        if (is_admin() || (defined('WP_CLI') && WP_CLI)) {
+            BulkImport\Database\DbInstaller::checkSchemaVersion();
+        }
 
-		$this->instances = [
-			'Logger'         => $logger,
-			'Mappings'       => new \WicketImporter\Mapping\MappingRepository(),
-			'StagingTable'   => new ImportStagingTable(),
-			'FileParser'     => new \WicketImporter\BulkImport\FileParserService( $logger ),
-			'Validation'     => new \WicketImporter\BulkImport\ValidationService( $logger ),
-			'ImportAdapter'  => new \WicketImporter\BulkImport\ImportAdapter(),
-			'MdpClient'      => $mdp_client,
-			'PersonResolver' => $person_resolver,
-			'Pipeline'       => new \WicketImporter\BulkImport\ImportPipeline( $logger, $person_resolver ),
-		];
+        // Core service instances
+        $logger = new Services\Logger();
+        $mdp_client = new BulkImport\WicketMdpClient($logger);
+        $person_resolver = new BulkImport\PersonResolver($mdp_client);
 
-		// Instantiate classes that register their own hooks
-		new \WicketImporter\Admin\ImportAdminPage();
-		new \WicketImporter\Assets();
-		new \WicketImporter\BulkImport\Rest\UploadController();
-		new \WicketImporter\Mapping\MappingSettings();
+        $this->instances = [
+            'Logger'         => $logger,
+            'Mappings'       => new Mapping\MappingRepository(),
+            'StagingTable'   => new ImportStagingTable(),
+            'FileParser'     => new BulkImport\FileParserService($logger),
+            'Validation'     => new BulkImport\ValidationService($logger),
+            'ImportAdapter'  => new BulkImport\ImportAdapter(),
+            'MdpClient'      => $mdp_client,
+            'PersonResolver' => $person_resolver,
+            'Pipeline'       => new BulkImport\ImportPipeline($logger, $person_resolver),
+        ];
 
-		// TODO Phase 1: ImportPipeline
-		// TODO Phase 4: Cheque\BatchProcessor, Cheque\Rest\ProcessController
-	}
+        // Instantiate classes that register their own hooks
+        new Admin\ImportAdminPage();
+        new Assets();
+        new BulkImport\Rest\UploadController();
+        new Mapping\MappingSettings();
 
-	/**
-	 * Magic method to access services as methods (e.g. WicketImporter::get_instance()->Logger()).
-	 */
-	public function __call( string $name, array $arguments )
-	{
-		if ( isset( $this->instances[ $name ] ) ) {
-			return $this->instances[ $name ];
-		}
-		throw new \BadMethodCallException( "Service '{$name}' does not exist in Wicket Importer instances." );
-	}
+        // TODO Phase 1: ImportPipeline
+        // TODO Phase 4: Cheque\BatchProcessor, Cheque\Rest\ProcessController
+    }
+
+    /**
+     * Magic method to access services as methods (e.g. WicketImporter::get_instance()->Logger()).
+     */
+    public function __call(string $name, array $arguments)
+    {
+        if (isset($this->instances[$name])) {
+            return $this->instances[$name];
+        }
+        throw new \BadMethodCallException("Service '{$name}' does not exist in Wicket Importer instances.");
+    }
 }

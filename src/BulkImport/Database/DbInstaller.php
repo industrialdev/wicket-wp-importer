@@ -1,38 +1,39 @@
 <?php
+
 declare(strict_types=1);
 
 namespace WicketImporter\BulkImport\Database;
 
 class DbInstaller
 {
-	private const DB_VERSION_OPTION = 'wicket_import_db_version';
-	public const MAPPINGS_OPTION = 'wicket_import_mappings';
+    private const DB_VERSION_OPTION = 'wicket_import_db_version';
+    public const MAPPINGS_OPTION = 'wicket_import_mappings';
 
-	/**
-	 * Check schema version and run install/migration if needed.
-	 */
-	public static function checkSchemaVersion(): void
-	{
-		$installed_version = get_option( self::DB_VERSION_OPTION );
-		if ( $installed_version !== WICKET_IMPORT_DB_VERSION ) {
-			self::createTables();
-			self::seedDefaultMappings();
-			update_option( self::DB_VERSION_OPTION, WICKET_IMPORT_DB_VERSION );
-		}
-	}
+    /**
+     * Check schema version and run install/migration if needed.
+     */
+    public static function checkSchemaVersion(): void
+    {
+        $installed_version = get_option(self::DB_VERSION_OPTION);
+        if ($installed_version !== WICKET_IMPORT_DB_VERSION) {
+            self::createTables();
+            self::seedDefaultMappings();
+            update_option(self::DB_VERSION_OPTION, WICKET_IMPORT_DB_VERSION);
+        }
+    }
 
-	/**
-	 * Create/update custom database tables using dbDelta.
-	 */
-	public static function createTables(): void
-	{
-		global $wpdb;
+    /**
+     * Create/update custom database tables using dbDelta.
+     */
+    public static function createTables(): void
+    {
+        global $wpdb;
 
-		$staged_table  = $wpdb->prefix . 'wicket_import_staged_records';
-		$batches_table = $wpdb->prefix . 'wicket_import_batches';
-		$collate       = $wpdb->get_charset_collate();
+        $staged_table = $wpdb->prefix . 'wicket_import_staged_records';
+        $batches_table = $wpdb->prefix . 'wicket_import_batches';
+        $collate = $wpdb->get_charset_collate();
 
-		$staged_sql = "CREATE TABLE {$staged_table} (
+        $staged_sql = "CREATE TABLE {$staged_table} (
   id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
   session_id char(36) NOT NULL,
   batch_id char(36) DEFAULT NULL,
@@ -58,7 +59,7 @@ class DbInstaller
   KEY idx_batch_status (batch_id, import_status)
 ) {$collate};";
 
-		$batches_sql = "CREATE TABLE {$batches_table} (
+        $batches_sql = "CREATE TABLE {$batches_table} (
   id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
   batch_id char(36) NOT NULL,
   session_id char(36) NOT NULL,
@@ -91,99 +92,99 @@ class DbInstaller
   KEY idx_created_at (created_at)
 ) {$collate};";
 
-		require_once ABSPATH . 'wp-admin/includes/upgrade.php';
-		dbDelta( $staged_sql );
-		dbDelta( $batches_sql );
-	}
+        require_once ABSPATH . 'wp-admin/includes/upgrade.php';
+        dbDelta($staged_sql);
+        dbDelta($batches_sql);
+    }
 
-	/**
-	 * Seed the default late fee mappings into HyperFields options.
-	 */
-	public static function seedDefaultMappings(): void
-	{
-		$existing = get_option( self::MAPPINGS_OPTION );
+    /**
+     * Seed the default late fee mappings into HyperFields options.
+     */
+    public static function seedDefaultMappings(): void
+    {
+        $existing = get_option(self::MAPPINGS_OPTION);
 
-		if ( ! is_array( $existing ) || empty( $existing ) ) {
-			$defaults = [
-				[
-					'role_slug'        => 'late-fee-1',
-					'product_id'       => 2111,
-					'product_sku'      => 'LATE-1',
-					'label'            => 'Late Fee 1',
-					'mapping_type'     => 'late_fee',
-					'application_type' => 'product',
-					'is_active'        => 1,
-				],
-				[
-					'role_slug'        => 'late-fee-2',
-					'product_id'       => 2112,
-					'product_sku'      => 'LATE-2',
-					'label'            => 'Late Fee 2 (Reinstatement Fee)',
-					'mapping_type'     => 'late_fee',
-					'application_type' => 'product',
-					'is_active'        => 1,
-				],
-				[
-					'role_slug'        => 'late-fee-3-year-0-to-3',
-					'product_id'       => 2113,
-					'product_sku'      => 'LATE-3-0-TO-3',
-					'label'            => 'Late Fee 3 - 0 to 3 Years',
-					'mapping_type'     => 'late_fee',
-					'application_type' => 'product',
-					'is_active'        => 1,
-				],
-				[
-					'role_slug'        => 'late-fee-3-regular',
-					'product_id'       => 2114,
-					'product_sku'      => 'LATE-3-REG',
-					'label'            => 'Late Fee 3 - Regular',
-					'mapping_type'     => 'late_fee',
-					'application_type' => 'product',
-					'is_active'        => 1,
-				],
-				[
-					'role_slug'        => 'late-fee-4-year-0-to-3',
-					'product_id'       => 2115,
-					'product_sku'      => 'LATE-4-0-TO-3',
-					'label'            => 'Late Fee 4 - 0 to 3 Years',
-					'mapping_type'     => 'late_fee',
-					'application_type' => 'product',
-					'is_active'        => 1,
-				],
-				[
-					'role_slug'        => 'late-fee-4-regular',
-					'product_id'       => 2116,
-					'product_sku'      => 'LATE-4-REG',
-					'label'            => 'Late Fee 4',
-					'mapping_type'     => 'late_fee',
-					'application_type' => 'product',
-					'is_active'        => 1,
-				],
-				[
-					'role_slug'        => 'late-fee-5',
-					'product_id'       => 2117,
-					'product_sku'      => 'LATE-5',
-					'label'            => 'Late Fee 5',
-					'mapping_type'     => 'late_fee',
-					'application_type' => 'product',
-					'is_active'        => 1,
-				],
-				[
-					'role_slug'        => 'late-fee-special-temporary',
-					'product_id'       => 2118,
-					'product_sku'      => 'LATE-ST',
-					'label'            => 'Late Fee - Special Temporary',
-					'mapping_type'     => 'late_fee',
-					'application_type' => 'product',
-					'is_active'        => 1,
-				],
-			];
+        if (!is_array($existing) || empty($existing)) {
+            $defaults = [
+                [
+                    'role_slug'        => 'late-fee-1',
+                    'product_id'       => 2111,
+                    'product_sku'      => 'LATE-1',
+                    'label'            => 'Late Fee 1',
+                    'mapping_type'     => 'late_fee',
+                    'application_type' => 'product',
+                    'is_active'        => 1,
+                ],
+                [
+                    'role_slug'        => 'late-fee-2',
+                    'product_id'       => 2112,
+                    'product_sku'      => 'LATE-2',
+                    'label'            => 'Late Fee 2 (Reinstatement Fee)',
+                    'mapping_type'     => 'late_fee',
+                    'application_type' => 'product',
+                    'is_active'        => 1,
+                ],
+                [
+                    'role_slug'        => 'late-fee-3-year-0-to-3',
+                    'product_id'       => 2113,
+                    'product_sku'      => 'LATE-3-0-TO-3',
+                    'label'            => 'Late Fee 3 - 0 to 3 Years',
+                    'mapping_type'     => 'late_fee',
+                    'application_type' => 'product',
+                    'is_active'        => 1,
+                ],
+                [
+                    'role_slug'        => 'late-fee-3-regular',
+                    'product_id'       => 2114,
+                    'product_sku'      => 'LATE-3-REG',
+                    'label'            => 'Late Fee 3 - Regular',
+                    'mapping_type'     => 'late_fee',
+                    'application_type' => 'product',
+                    'is_active'        => 1,
+                ],
+                [
+                    'role_slug'        => 'late-fee-4-year-0-to-3',
+                    'product_id'       => 2115,
+                    'product_sku'      => 'LATE-4-0-TO-3',
+                    'label'            => 'Late Fee 4 - 0 to 3 Years',
+                    'mapping_type'     => 'late_fee',
+                    'application_type' => 'product',
+                    'is_active'        => 1,
+                ],
+                [
+                    'role_slug'        => 'late-fee-4-regular',
+                    'product_id'       => 2116,
+                    'product_sku'      => 'LATE-4-REG',
+                    'label'            => 'Late Fee 4',
+                    'mapping_type'     => 'late_fee',
+                    'application_type' => 'product',
+                    'is_active'        => 1,
+                ],
+                [
+                    'role_slug'        => 'late-fee-5',
+                    'product_id'       => 2117,
+                    'product_sku'      => 'LATE-5',
+                    'label'            => 'Late Fee 5',
+                    'mapping_type'     => 'late_fee',
+                    'application_type' => 'product',
+                    'is_active'        => 1,
+                ],
+                [
+                    'role_slug'        => 'late-fee-special-temporary',
+                    'product_id'       => 2118,
+                    'product_sku'      => 'LATE-ST',
+                    'label'            => 'Late Fee - Special Temporary',
+                    'mapping_type'     => 'late_fee',
+                    'application_type' => 'product',
+                    'is_active'        => 1,
+                ],
+            ];
 
-			update_option( self::MAPPINGS_OPTION, [
-				'late_fees' => $defaults,
-				'discounts' => [],
-				'sections'  => [],
-			] );
-		}
-	}
+            update_option(self::MAPPINGS_OPTION, [
+                'late_fees' => $defaults,
+                'discounts' => [],
+                'sections'  => [],
+            ]);
+        }
+    }
 }

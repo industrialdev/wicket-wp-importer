@@ -27,8 +27,8 @@ Both subscribe to the same hooks; they never share a request path (OBA = inline 
 - **Type**: Filter
 - **Signature**: `apply_filters('wicket_import_csv_columns', array $columns, array $context): array`
 - **Fired from**: `ImportPipeline`, `UploadController`, `Support/ColumnOrder`
-- **Default**: `[]` (core registers no columns; the extension owns them)
-- **Purpose**: Register static CSV column definitions. `$context` is `['context' => 'bulk'|'individual']` so an extension can vary the required-set between the bulk CSV and the manual entry form.
+- **Default**: `[]` from extensions; when no extension registers any, the core seeds `Support\DefaultColumns::bulk()` (universal person identity: First Name, Last Name, Email Address) so the importer is usable standalone and the CSV template is never empty. An extension that returns its own non-empty column set owns the full list (the baseline does not merge in, so there is no duplicate-key risk)
+- **Purpose**: Register static CSV column definitions. `$context` is `['context' => 'bulk'|'individual']` so an extension can vary the required-set between the bulk CSV and the manual entry form. Extensions append via `array_merge($columns, [...])`; returning a fresh array replaces the baseline entirely.
 - **Verified**: fired.
 
 ### `wicket_import_csv_delimiter`

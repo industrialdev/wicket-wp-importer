@@ -1,4 +1,5 @@
 <?php
+
 declare(strict_types=1);
 
 namespace WicketImporter\Validators;
@@ -12,24 +13,24 @@ use WicketImporter\ValueObjects\ValidationResult;
  */
 final class PhoneValidator implements ValidatorInterface
 {
-	private const MIN_DIGITS = 7;
-	private const MAX_DIGITS = 15;
+    private const MIN_DIGITS = 7;
+    private const MAX_DIGITS = 15;
 
-	public function validate( mixed $value, array $context ): ValidationResult
-	{
-		$raw = trim( (string) $value );
+    public function validate(mixed $value, array $context): ValidationResult
+    {
+        $raw = trim((string) $value);
 
-		if ( $raw === '' ) {
-			return ValidationResult::valid();
-		}
+        if ($raw === '') {
+            return ValidationResult::valid();
+        }
 
-		$digits = preg_replace( '/[^0-9]/', '', $raw );
-		$count = $digits === null ? 0 : strlen( $digits );
+        $digits = preg_replace('/[^0-9]/', '', $raw);
+        $count = $digits === null ? 0 : strlen($digits);
 
-		if ( $count < self::MIN_DIGITS || $count > self::MAX_DIGITS ) {
-			return new ValidationResult( ValidationResult::STATUS_INVALID, sprintf( 'Phone must contain %d to %d digits.', self::MIN_DIGITS, self::MAX_DIGITS ) );
-		}
+        if ($count < self::MIN_DIGITS || $count > self::MAX_DIGITS) {
+            return new ValidationResult(ValidationResult::STATUS_INVALID, sprintf('Phone must contain %d to %d digits.', self::MIN_DIGITS, self::MAX_DIGITS));
+        }
 
-		return ValidationResult::valid();
-	}
+        return ValidationResult::valid();
+    }
 }

@@ -5,22 +5,29 @@
   "license": "GPL-2.0-or-later",
   "require": {
     "php": ">=8.2",
-    "industrialdev/wicket-wp-base-plugin": "^2.4",
-    "estebanforge/hyperfields": "^1.0"
+    "estebanforge/hyperfields": "^1"
   },
   "require-dev": {
-    "squizlabs/php_codesniffer": "^3.11",
-    "phpcompatibility/phpcompatibility-wp": "^2.1",
-    "wp-coding-standards/wpcs": "^3.1"
+    "friendsofphp/php-cs-fixer": "^3"
   },
   "autoload": {
     "psr-4": {
       "WicketImporter\\": "src/"
     }
   },
+  "scripts": {
+    "check": [
+      "@cs:lint"
+    ],
+    "cs:fix": "php-cs-fixer fix",
+    "cs:format": "php-cs-fixer fix",
+    "cs:lint": "php-cs-fixer fix --dry-run --diff",
+    "production": "composer install && composer cs:fix && composer install --no-dev --optimize-autoloader",
+    "setup-hooks": "mkdir -p .git/hooks && cp .ci/pre-push .git/hooks/pre-push && chmod +x .git/hooks/pre-push && echo 'Git hooks installed to .git/hooks/pre-push'"
+  },
   "config": {
     "allow-plugins": {
-      "dealerdirect/phpcodesniffer-composer-installer": true
+      "automattic/jetpack-autoloader": true
     }
   }
 }

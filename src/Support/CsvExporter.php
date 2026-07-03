@@ -1,4 +1,5 @@
 <?php
+
 declare(strict_types=1);
 
 namespace WicketImporter\Support;
@@ -12,77 +13,77 @@ namespace WicketImporter\Support;
  */
 final class CsvExporter
 {
-	/**
-	 * Leading characters that trigger escaping. All single-byte ASCII, so a
-	 * byte-level check on $string[0] is correct even for multibyte values.
-	 */
-	private const DANGEROUS_LEADING_CHARS = [ '=', '+', '-', '@', "\t", "\r" ];
+    /**
+     * Leading characters that trigger escaping. All single-byte ASCII, so a
+     * byte-level check on $string[0] is correct even for multibyte values.
+     */
+    private const DANGEROUS_LEADING_CHARS = ['=', '+', '-', '@', "\t", "\r"];
 
-	/**
-	 * Escape a single cell value against CSV formula injection.
-	 */
-	public function escapeCellValue( mixed $value ): string
-	{
-		if ( $value === null ) {
-			return '';
-		}
+    /**
+     * Escape a single cell value against CSV formula injection.
+     */
+    public function escapeCellValue(mixed $value): string
+    {
+        if ($value === null) {
+            return '';
+        }
 
-		$s = is_string( $value ) ? $value : (string) $value;
+        $s = is_string($value) ? $value : (string) $value;
 
-		if ( $s === '' ) {
-			return '';
-		}
+        if ($s === '') {
+            return '';
+        }
 
-		if ( in_array( $s[0], self::DANGEROUS_LEADING_CHARS, true ) ) {
-			return "\t" . $s;
-		}
+        if (in_array($s[0], self::DANGEROUS_LEADING_CHARS, true)) {
+            return "\t" . $s;
+        }
 
-		return $s;
-	}
+        return $s;
+    }
 
-	/**
-	 * Write one escaped row to a CSV handle.
-	 *
-	 * @param resource    $handle  Open write handle (e.g. php://output).
-	 * @param list<mixed> $values  Cell values for the row.
-	 */
-	public function writeRow( array $values, $handle ): void
-	{
-		$escaped = array_map( fn( mixed $v ): string => $this->escapeCellValue( $v ), array_values( $values ) );
+    /**
+     * Write one escaped row to a CSV handle.
+     *
+     * @param resource    $handle  Open write handle (e.g. php://output).
+     * @param list<mixed> $values  Cell values for the row.
+     */
+    public function writeRow(array $values, $handle): void
+    {
+        $escaped = array_map(fn (mixed $v): string => $this->escapeCellValue($v), array_values($values));
 
-		fputcsv( $handle, $escaped, ',', '"', '' );
-	}
+        fputcsv($handle, $escaped, ',', '"', '');
+    }
 
-	/**
-	 * Stream a CSV download to the browser and terminate the request.
-	 *
-	 * Note: calling exit() from a REST callback short-circuits WP REST's normal
-	 * dispatch (rest_post_dispatch, rest_pre_serve_request, rest_send_cors_headers).
-	 * Accepted tradeoff for v1 admin-only downloads (same-origin). If CSV routes
-	 * ever need to serve a different origin or interoperate with CORS/audit
-	 * plugins, switch to building the body into a string and returning a
-	 * WP_REST_Response with these headers instead.
-	 *
-	 * @param string            $filename Download filename (sanitized via sanitize_file_name()).
-	 * @param list<list<mixed>> $rows     Rows to write; the first row is the header row.
-	 */
-	public function download( string $filename, array $rows ): never
-	{
-		nocache_headers();
-		header( 'Content-Description: File Transfer' );
-		header( 'Content-Type: text/csv; charset=utf-8' );
-		header( 'Content-Disposition: attachment; filename="' . sanitize_file_name( $filename ) . '"' );
-		// Prevent MIME sniffing from re-interpreting the CSV as HTML.
-		header( 'X-Content-Type-Options: nosniff' );
+    /**
+     * Stream a CSV download to the browser and terminate the request.
+     *
+     * Note: calling exit() from a REST callback short-circuits WP REST's normal
+     * dispatch (rest_post_dispatch, rest_pre_serve_request, rest_send_cors_headers).
+     * Accepted tradeoff for v1 admin-only downloads (same-origin). If CSV routes
+     * ever need to serve a different origin or interoperate with CORS/audit
+     * plugins, switch to building the body into a string and returning a
+     * WP_REST_Response with these headers instead.
+     *
+     * @param string            $filename Download filename (sanitized via sanitize_file_name()).
+     * @param list<list<mixed>> $rows     Rows to write; the first row is the header row.
+     */
+    public function download(string $filename, array $rows): never
+    {
+        nocache_headers();
+        header('Content-Description: File Transfer');
+        header('Content-Type: text/csv; charset=utf-8');
+        header('Content-Disposition: attachment; filename="' . sanitize_file_name($filename) . '"');
+        // Prevent MIME sniffing from re-interpreting the CSV as HTML.
+        header('X-Content-Type-Options: nosniff');
 
-		$out = fopen( 'php://output', 'wb' );
-		if ( $out !== false ) {
-			foreach ( $rows as $row ) {
-				$this->writeRow( $row, $out );
-			}
-			fclose( $out );
-		}
+        $out = fopen('php://output', 'wb');
+        if ($out !== false) {
+            foreach ($rows as $row) {
+                $this->writeRow($row, $out);
+            }
+            fclose($out);
+        }
 
-		exit;
-	}
+        exit;
+    }
 }

@@ -1,4 +1,5 @@
 <?php
+
 declare(strict_types=1);
 
 namespace WicketImporter\Validators;
@@ -20,9 +21,9 @@ use WicketImporter\ValueObjects\ValidationResult;
  */
 interface ValidatorInterface
 {
-	/**
-	 * @param mixed               $value   The raw cell value (string|null from CSV).
-	 * @param array<string, mixed> $context See class docblock.
-	 */
-	public function validate( mixed $value, array $context ): ValidationResult;
+    /**
+     * @param mixed               $value   The raw cell value (string|null from CSV).
+     * @param array<string, mixed> $context See class docblock.
+     */
+    public function validate(mixed $value, array $context): ValidationResult;
 }

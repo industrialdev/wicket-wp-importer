@@ -1,4 +1,5 @@
 <?php
+
 declare(strict_types=1);
 
 namespace WicketImporter\BulkImport;
@@ -31,54 +32,53 @@ namespace WicketImporter\BulkImport;
  */
 final class PersonResolutionResult
 {
-	public const STATUS_RESOLVED = 'resolved';
-	public const STATUS_EMAIL_CONFLICT = 'email_conflict';
-	public const STATUS_SKIPPED_ACTIVE_MEMBERSHIP = 'skipped_active_membership';
-	public const STATUS_FAILED = 'failed';
+    public const STATUS_RESOLVED = 'resolved';
+    public const STATUS_EMAIL_CONFLICT = 'email_conflict';
+    public const STATUS_SKIPPED_ACTIVE_MEMBERSHIP = 'skipped_active_membership';
+    public const STATUS_FAILED = 'failed';
 
-	/**
-	 * @param string      $status   One of the STATUS_* constants.
-	 * @param string|null $uuid     Resolved MDP person UUID (RESOLVED only).
-	 * @param array|null  $person   Normalized MDP person entry (RESOLVED only).
-	 *                              Carried so the pipeline can seed WP user
-	 *                              creation + CPT meta without a re-fetch.
-	 * @param string|null $message  Human-readable detail for non-RESOLVED states.
-	 */
-	private function __construct(
-		public readonly string $status,
-		public readonly ?string $uuid = null,
-		public readonly ?array $person = null,
-		public readonly ?string $message = null,
-	) {
-	}
+    /**
+     * @param string      $status   One of the STATUS_* constants.
+     * @param string|null $uuid     Resolved MDP person UUID (RESOLVED only).
+     * @param array|null  $person   Normalized MDP person entry (RESOLVED only).
+     *                              Carried so the pipeline can seed WP user
+     *                              creation + CPT meta without a re-fetch.
+     * @param string|null $message  Human-readable detail for non-RESOLVED states.
+     */
+    private function __construct(
+        public readonly string $status,
+        public readonly ?string $uuid = null,
+        public readonly ?array $person = null,
+        public readonly ?string $message = null,
+    ) {}
 
-	/** Scenario A/B success: a UUID was resolved and the row may proceed. */
-	public static function resolved( string $uuid, array $person ): self
-	{
-		return new self( self::STATUS_RESOLVED, $uuid, $person );
-	}
+    /** Scenario A/B success: a UUID was resolved and the row may proceed. */
+    public static function resolved(string $uuid, array $person): self
+    {
+        return new self(self::STATUS_RESOLVED, $uuid, $person);
+    }
 
-	/** Partial match (email hit, name differs). Needs review. */
-	public static function emailConflict( string $message ): self
-	{
-		return new self( self::STATUS_EMAIL_CONFLICT, null, null, $message );
-	}
+    /** Partial match (email hit, name differs). Needs review. */
+    public static function emailConflict(string $message): self
+    {
+        return new self(self::STATUS_EMAIL_CONFLICT, null, null, $message);
+    }
 
-	/** Exact match but the person already has an active membership. */
-	public static function skippedActiveMembership( string $message ): self
-	{
-		return new self( self::STATUS_SKIPPED_ACTIVE_MEMBERSHIP, null, null, $message );
-	}
+    /** Exact match but the person already has an active membership. */
+    public static function skippedActiveMembership(string $message): self
+    {
+        return new self(self::STATUS_SKIPPED_ACTIVE_MEMBERSHIP, null, null, $message);
+    }
 
-	/** MDP API failure; row failed but batch continues. */
-	public static function failed( string $message ): self
-	{
-		return new self( self::STATUS_FAILED, null, null, $message );
-	}
+    /** MDP API failure; row failed but batch continues. */
+    public static function failed(string $message): self
+    {
+        return new self(self::STATUS_FAILED, null, null, $message);
+    }
 
-	/** Convenience for the pipeline: did resolution yield a usable UUID? */
-	public function isResolved(): bool
-	{
-		return $this->status === self::STATUS_RESOLVED;
-	}
+    /** Convenience for the pipeline: did resolution yield a usable UUID? */
+    public function isResolved(): bool
+    {
+        return $this->status === self::STATUS_RESOLVED;
+    }
 }

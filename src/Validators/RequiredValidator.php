@@ -1,4 +1,5 @@
 <?php
+
 declare(strict_types=1);
 
 namespace WicketImporter\Validators;
@@ -14,16 +15,16 @@ use WicketImporter\ValueObjects\ValidationResult;
  */
 final class RequiredValidator implements ValidatorInterface
 {
-	public function validate( mixed $value, array $context ): ValidationResult
-	{
-		if ( $value === null ) {
-			return new ValidationResult( ValidationResult::STATUS_INVALID, 'This field is required.' );
-		}
+    public function validate(mixed $value, array $context): ValidationResult
+    {
+        if ($value === null) {
+            return new ValidationResult(ValidationResult::STATUS_INVALID, 'This field is required.');
+        }
 
-		if ( is_string( $value ) && trim( $value ) === '' ) {
-			return new ValidationResult( ValidationResult::STATUS_INVALID, 'This field is required.' );
-		}
+        if (is_string($value) && trim($value) === '') {
+            return new ValidationResult(ValidationResult::STATUS_INVALID, 'This field is required.');
+        }
 
-		return ValidationResult::valid();
-	}
+        return ValidationResult::valid();
+    }
 }

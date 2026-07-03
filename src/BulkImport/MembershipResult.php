@@ -1,4 +1,5 @@
 <?php
+
 declare(strict_types=1);
 
 namespace WicketImporter\BulkImport;
@@ -16,45 +17,44 @@ namespace WicketImporter\BulkImport;
  */
 final class MembershipResult
 {
-	public const STATUS_CREATED = 'created';
-	public const STATUS_SKIPPED = 'skipped';
-	public const STATUS_FAILED  = 'failed';
+    public const STATUS_CREATED = 'created';
+    public const STATUS_SKIPPED = 'skipped';
+    public const STATUS_FAILED = 'failed';
 
-	private function __construct(
-		public readonly string $status,
-		public readonly ?int $membershipId,
-		public readonly ?string $wicketUuid,
-		public readonly ?string $message,
-	) {
-	}
+    private function __construct(
+        public readonly string $status,
+        public readonly ?int $membershipId,
+        public readonly ?string $wicketUuid,
+        public readonly ?string $message,
+    ) {}
 
-	public static function created( int $membershipId, string $wicketUuid ): self
-	{
-		return new self( self::STATUS_CREATED, $membershipId, $wicketUuid, null );
-	}
+    public static function created(int $membershipId, string $wicketUuid): self
+    {
+        return new self(self::STATUS_CREATED, $membershipId, $wicketUuid, null);
+    }
 
-	public static function skipped( string $reason ): self
-	{
-		return new self( self::STATUS_SKIPPED, null, null, $reason );
-	}
+    public static function skipped(string $reason): self
+    {
+        return new self(self::STATUS_SKIPPED, null, null, $reason);
+    }
 
-	public static function failed( string $message ): self
-	{
-		return new self( self::STATUS_FAILED, null, null, $message );
-	}
+    public static function failed(string $message): self
+    {
+        return new self(self::STATUS_FAILED, null, null, $message);
+    }
 
-	public function isCreated(): bool
-	{
-		return $this->status === self::STATUS_CREATED;
-	}
+    public function isCreated(): bool
+    {
+        return $this->status === self::STATUS_CREATED;
+    }
 
-	public function isSkipped(): bool
-	{
-		return $this->status === self::STATUS_SKIPPED;
-	}
+    public function isSkipped(): bool
+    {
+        return $this->status === self::STATUS_SKIPPED;
+    }
 
-	public function isFailed(): bool
-	{
-		return $this->status === self::STATUS_FAILED;
-	}
+    public function isFailed(): bool
+    {
+        return $this->status === self::STATUS_FAILED;
+    }
 }

@@ -1,4 +1,5 @@
 <?php
+
 declare(strict_types=1);
 
 namespace WicketImporter\Mapping;
@@ -7,187 +8,189 @@ use WicketImporter\BulkImport\Database\DbInstaller;
 
 class MappingRepository
 {
-	/**
-	 * Retrieve all mappings optionally filtered by type.
-	 *
-	 * @return MappingEntry[]
-	 */
-	public function getAll( ?string $type = null ): array
-	{
-		$options = get_option( DbInstaller::MAPPINGS_OPTION, [] );
-		if ( ! is_array( $options ) ) {
-			return [];
-		}
+    /**
+     * Retrieve all mappings optionally filtered by type.
+     *
+     * @return MappingEntry[]
+     */
+    public function getAll(?string $type = null): array
+    {
+        $options = get_option(DbInstaller::MAPPINGS_OPTION, []);
+        if (!is_array($options)) {
+            return [];
+        }
 
-		$entries = [];
+        $entries = [];
 
-		// Handle late fees
-		if ( ( null === $type || 'late_fee' === $type ) && isset( $options['late_fees'] ) && is_array( $options['late_fees'] ) ) {
-			foreach ( $options['late_fees'] as $row ) {
-				$entries[] = MappingEntry::fromArray( $row, 'late_fee' );
-			}
-		}
+        // Handle late fees
+        if ((null === $type || 'late_fee' === $type) && isset($options['late_fees']) && is_array($options['late_fees'])) {
+            foreach ($options['late_fees'] as $row) {
+                $entries[] = MappingEntry::fromArray($row, 'late_fee');
+            }
+        }
 
-		// Handle discounts
-		if ( ( null === $type || 'discount' === $type ) && isset( $options['discounts'] ) && is_array( $options['discounts'] ) ) {
-			foreach ( $options['discounts'] as $row ) {
-				$entries[] = MappingEntry::fromArray( $row, 'discount' );
-			}
-		}
+        // Handle discounts
+        if ((null === $type || 'discount' === $type) && isset($options['discounts']) && is_array($options['discounts'])) {
+            foreach ($options['discounts'] as $row) {
+                $entries[] = MappingEntry::fromArray($row, 'discount');
+            }
+        }
 
-		// Handle sections
-		if ( ( null === $type || 'section' === $type ) && isset( $options['sections'] ) && is_array( $options['sections'] ) ) {
-			foreach ( $options['sections'] as $row ) {
-				$entries[] = MappingEntry::fromArray( $row, 'section' );
-			}
-		}
+        // Handle sections
+        if ((null === $type || 'section' === $type) && isset($options['sections']) && is_array($options['sections'])) {
+            foreach ($options['sections'] as $row) {
+                $entries[] = MappingEntry::fromArray($row, 'section');
+            }
+        }
 
-		return $entries;
-	}
+        return $entries;
+    }
 
-	/**
-	 * Find a mapping entry by its stable role slug.
-	 */
-	public function getByRoleSlug( string $slug ): ?MappingEntry
-	{
-		$all = $this->getAll();
-		foreach ( $all as $entry ) {
-			if ( $entry->roleSlug === $slug ) {
-				return $entry;
-			}
-		}
-		return null;
-	}
+    /**
+     * Find a mapping entry by its stable role slug.
+     */
+    public function getByRoleSlug(string $slug): ?MappingEntry
+    {
+        $all = $this->getAll();
+        foreach ($all as $entry) {
+            if ($entry->roleSlug === $slug) {
+                return $entry;
+            }
+        }
 
-	/**
-	 * Get only active mappings, optionally filtered by type.
-	 *
-	 * @return MappingEntry[]
-	 */
-	public function getActiveMappings( ?string $type = null ): array
-	{
-		return array_values(
-			array_filter(
-				$this->getAll( $type ),
-				fn( MappingEntry $entry ) => $entry->isActive
-			)
-		);
-	}
+        return null;
+    }
 
-	/**
-	 * Find multiple mappings by their role slugs.
-	 *
-	 * @return MappingEntry[]
-	 */
-	public function getByRoleSlugs( array $slugs ): array
-	{
-		if ( empty( $slugs ) ) {
-			return [];
-		}
+    /**
+     * Get only active mappings, optionally filtered by type.
+     *
+     * @return MappingEntry[]
+     */
+    public function getActiveMappings(?string $type = null): array
+    {
+        return array_values(
+            array_filter(
+                $this->getAll($type),
+                fn (MappingEntry $entry) => $entry->isActive
+            )
+        );
+    }
 
-		return array_values(
-			array_filter(
-				$this->getAll(),
-				fn( MappingEntry $entry ) => in_array( $entry->roleSlug, $slugs, true )
-			)
-		);
-	}
+    /**
+     * Find multiple mappings by their role slugs.
+     *
+     * @return MappingEntry[]
+     */
+    public function getByRoleSlugs(array $slugs): array
+    {
+        if (empty($slugs)) {
+            return [];
+        }
 
-	/**
-	 * Save a single mapping entry.
-	 */
-	public function saveMapping( MappingEntry $entry ): void
-	{
-		$options = get_option( DbInstaller::MAPPINGS_OPTION, [] );
-		if ( ! is_array( $options ) ) {
-			$options = [];
-		}
+        return array_values(
+            array_filter(
+                $this->getAll(),
+                fn (MappingEntry $entry) => in_array($entry->roleSlug, $slugs, true)
+            )
+        );
+    }
 
-		$key = $this->getOptionKey( $entry->mappingType );
-		if ( ! isset( $options[ $key ] ) || ! is_array( $options[ $key ] ) ) {
-			$options[ $key ] = [];
-		}
+    /**
+     * Save a single mapping entry.
+     */
+    public function saveMapping(MappingEntry $entry): void
+    {
+        $options = get_option(DbInstaller::MAPPINGS_OPTION, []);
+        if (!is_array($options)) {
+            $options = [];
+        }
 
-		$found_index = -1;
-		foreach ( $options[ $key ] as $index => $row ) {
-			if ( isset( $row['role_slug'] ) && $row['role_slug'] === $entry->roleSlug ) {
-				$found_index = $index;
-				break;
-			}
-		}
+        $key = $this->getOptionKey($entry->mappingType);
+        if (!isset($options[$key]) || !is_array($options[$key])) {
+            $options[$key] = [];
+        }
 
-		if ( $found_index >= 0 ) {
-			$options[ $key ][ $found_index ] = $entry->toArray();
-		} else {
-			$options[ $key ][] = $entry->toArray();
-		}
+        $found_index = -1;
+        foreach ($options[$key] as $index => $row) {
+            if (isset($row['role_slug']) && $row['role_slug'] === $entry->roleSlug) {
+                $found_index = $index;
+                break;
+            }
+        }
 
-		update_option( DbInstaller::MAPPINGS_OPTION, $options );
-	}
+        if ($found_index >= 0) {
+            $options[$key][$found_index] = $entry->toArray();
+        } else {
+            $options[$key][] = $entry->toArray();
+        }
 
-	/**
-	 * Delete mapping entry by role slug.
-	 */
-	public function deleteMapping( string $roleSlug ): void
-	{
-		$entry = $this->getByRoleSlug( $roleSlug );
-		if ( ! $entry ) {
-			return;
-		}
+        update_option(DbInstaller::MAPPINGS_OPTION, $options);
+    }
 
-		$options = get_option( DbInstaller::MAPPINGS_OPTION, [] );
-		$key     = $this->getOptionKey( $entry->mappingType );
+    /**
+     * Delete mapping entry by role slug.
+     */
+    public function deleteMapping(string $roleSlug): void
+    {
+        $entry = $this->getByRoleSlug($roleSlug);
+        if (!$entry) {
+            return;
+        }
 
-		if ( isset( $options[ $key ] ) && is_array( $options[ $key ] ) ) {
-			$options[ $key ] = array_values(
-				array_filter(
-					$options[ $key ],
-					fn( array $row ) => ( $row['role_slug'] ?? '' ) !== $roleSlug
-				)
-			);
-			update_option( DbInstaller::MAPPINGS_OPTION, $options );
-		}
-	}
+        $options = get_option(DbInstaller::MAPPINGS_OPTION, []);
+        $key = $this->getOptionKey($entry->mappingType);
 
-	/**
-	 * Toggle active status of a mapping entry.
-	 */
-	public function toggleActive( string $roleSlug ): void
-	{
-		$entry = $this->getByRoleSlug( $roleSlug );
-		if ( $entry ) {
-			$entry->isActive = ! $entry->isActive;
-			$this->saveMapping( $entry );
-		}
-	}
+        if (isset($options[$key]) && is_array($options[$key])) {
+            $options[$key] = array_values(
+                array_filter(
+                    $options[$key],
+                    fn (array $row) => ($row['role_slug'] ?? '') !== $roleSlug
+                )
+            );
+            update_option(DbInstaller::MAPPINGS_OPTION, $options);
+        }
+    }
 
-	/**
-	 * Explicitly seed default late fee mappings.
-	 */
-	public function seedDefaults(): void
-	{
-		DbInstaller::seedDefaultMappings();
-	}
+    /**
+     * Toggle active status of a mapping entry.
+     */
+    public function toggleActive(string $roleSlug): void
+    {
+        $entry = $this->getByRoleSlug($roleSlug);
+        if ($entry) {
+            $entry->isActive = !$entry->isActive;
+            $this->saveMapping($entry);
+        }
+    }
 
-	/**
-	 * Get an immutable snapshot of all active mappings for batch registration.
-	 */
-	public function getMappingsSnapshot(): array
-	{
-		$active = $this->getActiveMappings();
-		return array_map( fn( MappingEntry $entry ) => $entry->toArray(), $active );
-	}
+    /**
+     * Explicitly seed default late fee mappings.
+     */
+    public function seedDefaults(): void
+    {
+        DbInstaller::seedDefaultMappings();
+    }
 
-	/**
-	 * Translate mapping types to options array keys.
-	 */
-	private function getOptionKey( string $mappingType ): string
-	{
-		return match ( $mappingType ) {
-			'late_fee' => 'late_fees',
-			'discount' => 'discounts',
-			'section'  => 'sections',
-			default    => throw new \InvalidArgumentException( "Unknown mapping type: {$mappingType}" ),
-		};
-	}
+    /**
+     * Get an immutable snapshot of all active mappings for batch registration.
+     */
+    public function getMappingsSnapshot(): array
+    {
+        $active = $this->getActiveMappings();
+
+        return array_map(fn (MappingEntry $entry) => $entry->toArray(), $active);
+    }
+
+    /**
+     * Translate mapping types to options array keys.
+     */
+    private function getOptionKey(string $mappingType): string
+    {
+        return match ($mappingType) {
+            'late_fee' => 'late_fees',
+            'discount' => 'discounts',
+            'section'  => 'sections',
+            default    => throw new \InvalidArgumentException("Unknown mapping type: {$mappingType}"),
+        };
+    }
 }

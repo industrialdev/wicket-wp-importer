@@ -3,15 +3,18 @@
  *
  * Task 7: Upload Type toggle (CSV / Manual show-hide).
  * Task 8: CSV drag-drop zone + file preview + fetch upload + Proceed binding.
+ * Task 11: Individual form submit + Restart binding.
  *
  * REST config is on window.WicketImportAdmin (localized by Assets.php):
- *   { restRoot, restNonce, screen, sessionId, maxFileSize, confirmationUrl }
+ *   { restRoot, restNonce, screen, sessionId, maxFileSize, confirmationUrl, uploadUrl }
  *
  * Strings use the native WP JS i18n package (wp-i18n): wp.i18n.__() and
  * wp.i18n.sprintf() / wp.i18n._n() with the 'wicket-wp-importer' text domain.
  * Translations are loaded via wp_set_script_translations() in Assets.php.
+ *
+ * No jQuery: this plugin ships vanilla DOM only.
  */
-(function($) {
+(function() {
 	'use strict';
 
 	if (typeof WicketImportAdmin === 'undefined') {
@@ -35,17 +38,25 @@
 		return wp.i18n.sprintf.apply(wp.i18n, arguments);
 	}
 
-	$(function() {
-		var $page = $('.wicket-importer');
-		if (!$page.length) {
+	function ready(fn) {
+		if (document.readyState === 'loading') {
+			document.addEventListener('DOMContentLoaded', fn);
+		} else {
+			fn();
+		}
+	}
+
+	ready(function() {
+		var page = document.querySelector('.wicket-importer');
+		if (!page) {
 			return;
 		}
 
-		bindUploadTypeToggle($page);
-		bindDropzone($page);
-		bindProceedButton($page);
-		bindRestartButton($page);
-		bindIndividualForm($page);
+		bindUploadTypeToggle();
+		bindDropzone();
+		bindProceedButton(page);
+		bindRestartButton(page);
+		bindIndividualForm();
 	});
 
 	// ------------------------------------------------------------------
@@ -63,100 +74,121 @@
 		if (!message) {
 			return;
 		}
-		var $notices = $('.wicket-importer-notices');
-		if (!$notices.length) {
+		var notices = document.querySelector('.wicket-importer-notices');
+		if (!notices) {
 			return;
 		}
 		// Clear previous notices of the same type to avoid stacking.
-		$notices.find('.notice-' + type).remove();
-		$('<div class="notice notice-' + type + '"><p></p></div>')
-			.find('p').text(message).end()
-			.appendTo($notices);
-		$notices[0].scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+		var existing = notices.querySelectorAll('.notice-' + type);
+		existing.forEach(function(n) { n.remove(); });
+
+		var div = document.createElement('div');
+		div.className = 'notice notice-' + type;
+		var p = document.createElement('p');
+		p.textContent = message;
+		div.appendChild(p);
+		notices.appendChild(div);
+		notices.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 	};
 
 	// ------------------------------------------------------------------
 	// Task 7: Upload Type toggle
 	// ------------------------------------------------------------------
 
-	function bindUploadTypeToggle($page) {
-		var $toggle = $('input[name="wicket_import_upload_type"]');
-		if (!$toggle.length) {
+	function bindUploadTypeToggle() {
+		var radios = document.querySelectorAll('input[name="wicket_import_upload_type"]');
+		if (!radios.length) {
 			return;
 		}
-		var showSection = function(value) {
-			$('#wicket-import-csv').prop('hidden', value !== 'csv');
-			$('#wicket-import-manual').prop('hidden', value !== 'manual');
-		};
-		$toggle.on('change', function() {
-			showSection($('input[name="wicket_import_upload_type"]:checked').val());
+		var csvSection = document.getElementById('wicket-import-csv');
+		var manualSection = document.getElementById('wicket-import-manual');
+
+		function showSection(value) {
+			if (csvSection) { csvSection.hidden = value !== 'csv'; }
+			if (manualSection) { manualSection.hidden = value !== 'manual'; }
+		}
+
+		radios.forEach(function(radio) {
+			radio.addEventListener('change', function() {
+				var checked = document.querySelector('input[name="wicket_import_upload_type"]:checked');
+				showSection(checked ? checked.value : '');
+			});
 		});
-		showSection($('input[name="wicket_import_upload_type"]:checked').val());
+
+		var initial = document.querySelector('input[name="wicket_import_upload_type"]:checked');
+		showSection(initial ? initial.value : '');
 	}
 
 	// ------------------------------------------------------------------
 	// Task 8.1 + 8.2: Dropzone + file preview + fetch upload
 	// ------------------------------------------------------------------
 
-	function bindDropzone($page) {
-		var $zone = $('#wicket-import-dropzone');
-		if (!$zone.length) {
+	function bindDropzone() {
+		var zone = document.getElementById('wicket-import-dropzone');
+		if (!zone) {
 			return;
 		}
 
-		var $input = $('#wicket-import-file-input');
-		var $preview = $('#wicket-import-file-preview');
-		var $name = $preview.find('.wicket-importer-file-name');
-		var $size = $preview.find('.wicket-importer-file-size');
-		var $rows = $preview.find('.wicket-importer-file-rows');
-		var $uploadBtn = $preview.find('.wicket-importer-upload-btn');
-		var $clearBtn = $preview.find('.wicket-importer-clear-btn');
+		var input = document.getElementById('wicket-import-file-input');
+		var preview = document.getElementById('wicket-import-file-preview');
+		if (!input || !preview) {
+			return;
+		}
+		var nameEl = preview.querySelector('.wicket-importer-file-name');
+		var sizeEl = preview.querySelector('.wicket-importer-file-size');
+		var rowsEl = preview.querySelector('.wicket-importer-file-rows');
+		var uploadBtn = preview.querySelector('.wicket-importer-upload-btn');
+		var clearBtn = preview.querySelector('.wicket-importer-clear-btn');
 		var selectedFile = null;
 		// Monotonic token so a stale FileReader (from a cleared / re-selected
 		// file) can't overwrite the current preview (nit 3).
 		var readToken = 0;
 
 		// --- click / keyboard to browse ---------------------------------
-		$zone.on('click', function() {
-			$input.trigger('click');
+		zone.addEventListener('click', function() {
+			input.click();
 		});
-		$zone.on('keydown', function(e) {
+		zone.addEventListener('keydown', function(e) {
 			if (e.key === 'Enter' || e.key === ' ') {
 				e.preventDefault();
-				$input.trigger('click');
+				input.click();
 			}
 		});
 
 		// --- drag events ------------------------------------------------
-		$zone.on('dragover', function(e) {
+		zone.addEventListener('dragover', function(e) {
 			e.preventDefault();
-			$zone.addClass('is-dragover');
+			zone.classList.add('is-dragover');
 		});
-		$zone.on('dragleave drop', function(e) {
+		zone.addEventListener('dragleave', function(e) {
 			e.preventDefault();
-			$zone.removeClass('is-dragover');
+			zone.classList.remove('is-dragover');
 		});
-		$zone.on('drop', function(e) {
-			var files = e.originalEvent.dataTransfer.files;
+		zone.addEventListener('drop', function(e) {
+			e.preventDefault();
+			zone.classList.remove('is-dragover');
+			var files = e.dataTransfer && e.dataTransfer.files;
 			if (files && files.length) {
 				handleFileSelected(files[0]);
 			}
 		});
 
 		// --- file input change ------------------------------------------
-		$input.on('change', function() {
-			if (this.files && this.files.length) {
-				handleFileSelected(this.files[0]);
+		input.addEventListener('change', function() {
+			if (input.files && input.files.length) {
+				handleFileSelected(input.files[0]);
 			}
 		});
 
 		// --- clear ------------------------------------------------------
-		$clearBtn.on('click', function() {
-			readToken++; // cancel any pending row-count read (nit 3)
-			selectedFile = null;
-			$input.val('');
-			$preview.prop('hidden', true);
-		});
+		if (clearBtn) {
+			clearBtn.addEventListener('click', function() {
+				readToken++; // cancel any pending row-count read (nit 3)
+				selectedFile = null;
+				input.value = '';
+				preview.hidden = true;
+			});
+		}
 
 		function handleFileSelected(file) {
 			// Extension gate (client-side nicety; server is authoritative).
@@ -176,10 +208,10 @@
 
 			readToken++; // invalidate any prior pending read (nit 3)
 			selectedFile = file;
-			$name.text(file.name);
-			$size.text(formatBytes(file.size));
-			$rows.text(''); // populated after the row-count read
-			$preview.prop('hidden', false);
+			if (nameEl) { nameEl.textContent = file.name; }
+			if (sizeEl) { sizeEl.textContent = formatBytes(file.size); }
+			if (rowsEl) { rowsEl.textContent = ''; } // populated after the row-count read
+			preview.hidden = false;
 
 			// Read a slice to show an APPROXIMATE row count (S2): never exact
 			// (quoted newlines, partial slice on big files), so label it so.
@@ -191,58 +223,60 @@
 				if (info.truncated) {
 					label += ' ' + t('(first 2 MB scanned)');
 				}
-				$rows.text(label);
+				if (rowsEl) { rowsEl.textContent = label; }
 			});
 		}
 
 		// --- upload confirm (8.2) ---------------------------------------
-		$uploadBtn.on('click', function() {
-			if (!selectedFile) {
-				return;
-			}
-			var url = $uploadBtn.data('upload-url');
-			var validationUrl = $uploadBtn.data('validation-url');
-			var originalText = $uploadBtn.text();
+		if (uploadBtn) {
+			uploadBtn.addEventListener('click', function() {
+				if (!selectedFile) {
+					return;
+				}
+				var url = uploadBtn.dataset.uploadUrl;
+				var validationUrl = uploadBtn.dataset.validationUrl;
+				var originalText = uploadBtn.textContent;
 
-			setBusy(true);
-			// S1: no empty-info notice here. Stale errors are cleared by the
-			// success-path redirect; on failure WicketImportShowNotice replaces.
+				setBusy(true);
+				// S1: no empty-info notice here. Stale errors are cleared by the
+				// success-path redirect; on failure WicketImportShowNotice replaces.
 
-			var data = new FormData();
-			data.append('file', selectedFile);
+				var data = new FormData();
+				data.append('file', selectedFile);
 
-			fetch(url, {
-				method: 'POST',
-				headers: { 'X-WP-Nonce': cfg.restNonce },
-				body: data,
-				credentials: 'same-origin'
-			})
-				.then(toJson)
-				.then(function(result) {
-					if (result && result.session_id) {
-						// Redirect to the validation screen with the new session.
-						window.location.href = validationUrl + '&session_id=' + encodeURIComponent(result.session_id);
-						return;
-					}
-					throw new Error(extractErrorMessage(result) || t('Upload failed. Please try again.'));
+				fetch(url, {
+					method: 'POST',
+					headers: { 'X-WP-Nonce': cfg.restNonce },
+					body: data,
+					credentials: 'same-origin'
 				})
-				.catch(function(err) {
-					setBusy(false);
-					window.WicketImportShowNotice(err.message, 'error');
-				});
-		});
+					.then(toJson)
+					.then(function(result) {
+						if (result && result.session_id) {
+							// Redirect to the validation screen with the new session.
+							window.location.href = validationUrl + '&session_id=' + encodeURIComponent(result.session_id);
+							return;
+						}
+						throw new Error(extractErrorMessage(result) || t('Upload failed. Please try again.'));
+					})
+					.catch(function(err) {
+						setBusy(false);
+						window.WicketImportShowNotice(err.message, 'error');
+					});
+			});
+		}
 
 		// Disable the zone + buttons while a request is in flight (nit 5):
 		// prevents dropping/selecting a second file whose preview would then
 		// disagree with the file actually being uploaded.
 		function setBusy(busy) {
-			$uploadBtn.prop('disabled', busy);
+			uploadBtn.disabled = busy;
 			if (busy) {
-				$uploadBtn.text(t('Uploading\u2026'));
-				$zone.addClass('is-busy');
+				uploadBtn.textContent = t('Uploading\u2026');
+				zone.classList.add('is-busy');
 			} else {
-				$uploadBtn.text(t('Validate & Upload'));
-				$zone.removeClass('is-busy');
+				uploadBtn.textContent = t('Validate & Upload');
+				zone.classList.remove('is-busy');
 			}
 		}
 	}
@@ -251,18 +285,23 @@
 	// Task 8.2: Proceed button (validation screen -> POST /run -> confirmation)
 	// ------------------------------------------------------------------
 
-	function bindProceedButton($page) {
-		$page.on('click', '.wicket-importer-proceed', function() {
-			var $btn = $(this);
-			var sessionId = $btn.data('session-id');
-			var runUrl = $btn.data('run-url');
+	function bindProceedButton(page) {
+		page.addEventListener('click', function(e) {
+			var btn = e.target.closest && e.target.closest('.wicket-importer-proceed');
+			if (!btn || !page.contains(btn)) {
+				return;
+			}
+			var sessionId = btn.dataset.sessionId;
+			var runUrl = btn.dataset.runUrl;
 			if (!runUrl || !sessionId) {
 				return;
 			}
 
-			var originalText = $btn.text();
-			$btn.prop('disabled', true).text(t('Processing\u2026'));
-			$('.wicket-importer-restart').prop('disabled', true);
+			var originalText = btn.textContent;
+			btn.disabled = true;
+			btn.textContent = t('Processing\u2026');
+			var restartBtns = page.querySelectorAll('.wicket-importer-restart');
+			restartBtns.forEach(function(b) { b.disabled = true; });
 			window.WicketImportShowNotice(t('Importing rows \u2014 this may take a moment.'), 'info');
 
 			fetch(runUrl, {
@@ -281,8 +320,9 @@
 					throw new Error(extractErrorMessage(result) || t('Import run failed. See the error below.'));
 				})
 				.catch(function(err) {
-					$btn.prop('disabled', false).text(originalText);
-					$('.wicket-importer-restart').prop('disabled', false);
+					btn.disabled = false;
+					btn.textContent = originalText;
+					restartBtns.forEach(function(b) { b.disabled = false; });
 					window.WicketImportShowNotice(err.message, 'error');
 				});
 		});
@@ -301,7 +341,7 @@
 			var data = null;
 			try { data = text ? JSON.parse(text) : null; } catch (e) { data = null; }
 			if (!response.ok) {
-			var msg = extractErrorMessage(data) || 'HTTP ' + response.status;
+				var msg = extractErrorMessage(data) || 'HTTP ' + response.status;
 				var err = new Error(msg);
 				// Attach the REST payload's inner .data (where WP REST puts
 				// status + custom keys like field_errors), so the catch can read
@@ -327,11 +367,12 @@
 	 *   truncated true when only the first SCAN_LIMIT bytes were read
 	 * Caller is responsible for labeling the result as approximate.
 	 */
+	var rowCountToken = 0;
 	function readRowCount(file, cb) {
-		var token = ++readRowCount._token;
+		var token = ++rowCountToken;
 		var reader = new FileReader();
 		reader.onload = function() {
-			if (token !== readRowCount._token) {
+			if (token !== rowCountToken) {
 				return; // a newer selection / clear invalidated this read (nit 3)
 			}
 			var text = String(reader.result || '');
@@ -343,18 +384,17 @@
 			cb({ count: Math.max(0, count - 1), truncated: file.size > SCAN_LIMIT });
 		};
 		reader.onerror = function() {
-			if (token !== readRowCount._token) { return; }
+			if (token !== rowCountToken) { return; }
 			cb({ count: 0, truncated: file.size > SCAN_LIMIT });
 		};
 		var slice = file.slice ? file.slice(0, SCAN_LIMIT) : file;
 		reader.readAsText(slice);
 	}
-	readRowCount._token = 0;
 	/**
 	 * Invalidate any in-flight row-count read (nit 3). Bumps the shared
 	 * generation so pending FileReader callbacks no-op on completion.
 	 */
-	readRowCount.cancel = function() { readRowCount._token++; };
+	function cancelRowCount() { rowCountToken++; }
 
 	function formatBytes(bytes) {
 		if (!bytes) { return '0 B'; }
@@ -370,35 +410,37 @@
 	// Task 11.3 + 11.4: Individual form submit -> validate + import -> confirmation
 	// ------------------------------------------------------------------
 
-	function bindIndividualForm($page) {
-		var $form = $('#wicket-import-individual-form');
-		if (!$form.length) {
+	function bindIndividualForm() {
+		var form = document.getElementById('wicket-import-individual-form');
+		if (!form) {
 			return;
 		}
 
-		$form.on('submit', function(e) {
+		form.addEventListener('submit', function(e) {
 			e.preventDefault();
 
-			var $btn = $form.find('.wicket-importer-individual-submit');
-			var url = $btn.data('individual-url');
-			var confirmationUrl = $btn.data('confirmation-url');
-			var originalText = $btn.text();
+			var btn = form.querySelector('.wicket-importer-individual-submit');
+			var url = btn ? btn.dataset.individualUrl : '';
+			var confirmationUrl = btn ? btn.dataset.confirmationUrl : '';
+			var originalText = btn ? btn.textContent : '';
 
 			// Clear previous inline field errors.
-			$form.find('.wicket-importer-field-error').remove();
-			$form.find('.has-error').removeClass('has-error');
+			form.querySelectorAll('.wicket-importer-field-error').forEach(function(n) { n.remove(); });
+			form.querySelectorAll('.has-error').forEach(function(n) { n.classList.remove('has-error'); });
 
 			// Gather all named form fields into a flat key=>value object.
-			// NOTE: serializeArray keeps only the LAST value when multiple inputs
-			// share a name (checkbox groups, repeaters). Multi-value fields should
-			// use name[] and a custom collector — flagged for OBA Task 33.1's
-			// dynamic state rows.
+			// NOTE: FormData.entries() keeps only the LAST value when multiple
+			// inputs share a name (checkbox groups, repeaters). Multi-value
+			// fields should use name[] and a custom collector — flagged for
+			// OBA Task 33.1's dynamic state rows.
+			var fd = new FormData(form);
 			var fields = {};
-			$.each($form.serializeArray(), function(i, pair) {
-				fields[pair.name] = pair.value;
-			});
+			fd.forEach(function(value, key) { fields[key] = value; });
 
-			$btn.prop('disabled', true).text(t('Processing\u2026'));
+			if (btn) {
+				btn.disabled = true;
+				btn.textContent = t('Processing\u2026');
+			}
 
 			fetch(url, {
 				method: 'POST',
@@ -418,17 +460,23 @@
 					throw new Error(extractErrorMessage(result) || t('Submission failed. Please try again.'));
 				})
 				.catch(function(err) {
-					$btn.prop('disabled', false).text(originalText);
+					if (btn) {
+						btn.disabled = false;
+						btn.textContent = originalText;
+					}
 
 					// WP REST 400 carries field_errors: pin them to the matching inputs.
 					var fieldErrors = err.data && err.data.field_errors;
 					if (fieldErrors && typeof fieldErrors === 'object') {
 						Object.keys(fieldErrors).forEach(function(key) {
-							var $input = $form.find('[name="' + CSS.escape(key) + '"]');
-							if ($input.length) {
-								$input.closest('.wicket-importer-form-field').addClass('has-error');
-								$('<p class="wicket-importer-field-error">' + $('<span>').text(fieldErrors[key]).html() + '</p>')
-									.insertAfter($input);
+							var fieldInput = form.querySelector('[name="' + CSS.escape(key) + '"]');
+							if (fieldInput) {
+								var fieldEl = fieldInput.closest('.wicket-importer-form-field');
+								if (fieldEl) { fieldEl.classList.add('has-error'); }
+								var errP = document.createElement('p');
+								errP.className = 'wicket-importer-field-error';
+								errP.textContent = fieldErrors[key];
+								fieldInput.insertAdjacentElement('afterend', errP);
 							}
 						});
 						return;
@@ -439,18 +487,23 @@
 				});
 		});
 	}
-	function bindRestartButton($page) {
-		$page.on('click', '.wicket-importer-restart', function() {
-			var $btn = $(this);
-			var clearUrl = $btn.data('clear-url');
-			var uploadUrl = $btn.data('upload-url');
+
+	function bindRestartButton(page) {
+		page.addEventListener('click', function(e) {
+			var btn = e.target.closest && e.target.closest('.wicket-importer-restart');
+			if (!btn || !page.contains(btn)) {
+				return;
+			}
+			var clearUrl = btn.dataset.clearUrl;
+			var uploadUrl = btn.dataset.uploadUrl || cfg.uploadUrl || '';
 			if (!clearUrl) {
 				return;
 			}
 
-			var originalText = $btn.text();
-			$btn.prop('disabled', true).text(t('Restarting\u2026'));
-			$('.wicket-importer-proceed').prop('disabled', true);
+			var originalText = btn.textContent;
+			btn.disabled = true;
+			btn.textContent = t('Restarting\u2026');
+			page.querySelectorAll('.wicket-importer-proceed').forEach(function(b) { b.disabled = true; });
 
 			fetch(clearUrl, {
 				method: 'DELETE',
@@ -460,13 +513,14 @@
 				.then(toJson)
 				.then(function() {
 					// Session cleared server-side; back to a fresh upload.
-					window.location.href = uploadUrl || cfg.uploadUrl || '';
+					window.location.href = uploadUrl;
 				})
 				.catch(function(err) {
-					$btn.prop('disabled', false).text(originalText);
-					$('.wicket-importer-proceed').prop('disabled', false);
+					btn.disabled = false;
+					btn.textContent = originalText;
+					page.querySelectorAll('.wicket-importer-proceed').forEach(function(b) { b.disabled = false; });
 					window.WicketImportShowNotice(err.message, 'error');
 				});
 		});
 	}
-})(jQuery);
+})();

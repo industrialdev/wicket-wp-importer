@@ -1,4 +1,5 @@
 <?php
+
 declare(strict_types=1);
 
 namespace WicketImporter\Support;
@@ -12,25 +13,25 @@ namespace WicketImporter\Support;
  */
 final class Json
 {
-	/**
-	 * Decode a JSON blob from the staging table into an array (empty on miss).
-	 *
-	 * Stored columns (raw_data, flagged_fields, subscription_ids,
-	 * extension_metadata) are nullable JSON strings. This returns a guaranteed
-	 * array so callers can iterate without a type check.
-	 *
-	 * @param string|null $value Raw JSON string (or null).
-	 *
-	 * @return array<string,mixed>
-	 */
-	public static function decodeArray( ?string $value ): array
-	{
-		if ( $value === null || $value === '' ) {
-			return [];
-		}
+    /**
+     * Decode a JSON blob from the staging table into an array (empty on miss).
+     *
+     * Stored columns (raw_data, flagged_fields, subscription_ids,
+     * extension_metadata) are nullable JSON strings. This returns a guaranteed
+     * array so callers can iterate without a type check.
+     *
+     * @param string|null $value Raw JSON string (or null).
+     *
+     * @return array<string,mixed>
+     */
+    public static function decodeArray(?string $value): array
+    {
+        if ($value === null || $value === '') {
+            return [];
+        }
 
-		$decoded = json_decode( $value, true );
+        $decoded = json_decode($value, true);
 
-		return is_array( $decoded ) ? $decoded : [];
-	}
+        return is_array($decoded) ? $decoded : [];
+    }
 }

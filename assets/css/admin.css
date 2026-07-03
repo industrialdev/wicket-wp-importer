@@ -1,5 +1,12 @@
 /* Wicket Importer Admin Styles (Task 7 skeleton) */
 
+/* The HTML `hidden` attribute is weaker than our display:flex rules below,
+ * so a flex container can render even when JS sets hidden=true. Re-assert
+ * the UA default so toggling the attribute actually hides the element. */
+[hidden] {
+	display: none !important;
+}
+
 .wicket-importer {
 	max-width: 1100px;
 }
@@ -354,4 +361,60 @@
 .wicket-importer-badge-neutral {
 	background: #e0e0e0;
 	color: #3c434a;
+}
+
+/* ---- History screen ------------------------------------------------- */
+
+.wicket-importer-history-filters {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 12px;
+	align-items: flex-end;
+	margin-bottom: 16px;
+}
+
+.wicket-importer-history-filters label {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	font-size: 12px;
+	color: #50575e;
+}
+
+.wicket-importer-history-filters input,
+.wicket-importer-history-filters select {
+	min-width: 140px;
+}
+
+.wicket-importer-history-table td,
+.wicket-importer-history-summary td {
+	vertical-align: top;
+}
+
+.wicket-importer-history-summary th {
+	width: 220px;
+}
+
+.wicket-importer-history-msg {
+	font-size: 12px;
+	color: #646970;
+	margin-top: 2px;
+}
+
+.wicket-importer-history-raw {
+	display: inline-block;
+	max-width: 420px;
+	max-height: 80px;
+	overflow: auto;
+	padding: 4px 6px;
+	background: #f6f7f7;
+	border: 1px solid #dcdcde;
+	border-radius: 3px;
+	font-size: 11px;
+	white-space: pre-wrap;
+	word-break: break-word;
+}
+
+.wicket-importer-history-pagination {
+	margin-top: 12px;
 }

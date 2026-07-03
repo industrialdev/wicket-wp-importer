@@ -1,0 +1,41 @@
+<?php return array(
+    'root' => array(
+        'name' => 'industrialdev/wicket-wp-importer',
+        'pretty_version' => 'dev-main',
+        'version' => 'dev-main',
+        'reference' => '54cd980506bb5e6986932bbf215de98ebc5b1db4',
+        'type' => 'wordpress-plugin',
+        'install_path' => __DIR__ . '/../../',
+        'aliases' => array(),
+        'dev' => false,
+    ),
+    'versions' => array(
+        'automattic/jetpack-autoloader' => array(
+            'pretty_version' => 'v2.12.0',
+            'version' => '2.12.0.0',
+            'reference' => '632b69cfc73ed5505f2b03165e7f68d414d0da12',
+            'type' => 'composer-plugin',
+            'install_path' => __DIR__ . '/../automattic/jetpack-autoloader',
+            'aliases' => array(),
+            'dev_requirement' => false,
+        ),
+        'estebanforge/hyperfields' => array(
+            'pretty_version' => '1.3.0',
+            'version' => '1.3.0.0',
+            'reference' => '0fcaf7f855e8ec964d309155e1145a93c65fd456',
+            'type' => 'library',
+            'install_path' => __DIR__ . '/../estebanforge/hyperfields',
+            'aliases' => array(),
+            'dev_requirement' => false,
+        ),
+        'industrialdev/wicket-wp-importer' => array(
+            'pretty_version' => 'dev-main',
+            'version' => 'dev-main',
+            'reference' => '54cd980506bb5e6986932bbf215de98ebc5b1db4',
+            'type' => 'wordpress-plugin',
+            'install_path' => __DIR__ . '/../../',
+            'aliases' => array(),
+            'dev_requirement' => false,
+        ),
+    ),
+);

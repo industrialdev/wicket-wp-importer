@@ -4,12 +4,26 @@
 
 namespace Composer\Autoload;
 
-class ComposerStaticInitd8609246c45ab2685cffde2acc13fdbd
+class ComposerStaticInita771d0f24e42cb7006d182ed849ee8a4
 {
+    public static $files = array (
+        '13f65e44352b0407f05cb5a5e174612b' => __DIR__ . '/..' . '/estebanforge/hyperfields/includes/helpers.php',
+        '0522701f5d113a2ff6373ccc834dd7d6' => __DIR__ . '/..' . '/estebanforge/hyperfields/includes/backward-compatibility.php',
+        'c1c635284e1ca7836efff979fb09390f' => __DIR__ . '/..' . '/estebanforge/hyperfields/bootstrap.php',
+    );
+
     public static $prefixLengthsPsr4 = array (
         'W' =>
         array (
             'WicketImporter\\' => 15,
+        ),
+        'H' =>
+        array (
+            'HyperFields\\' => 12,
+        ),
+        'A' =>
+        array (
+            'Automattic\\Jetpack\\Autoloader\\' => 30,
         ),
     );
 
@@ -18,18 +32,122 @@ class ComposerStaticInitd8609246c45ab2685cffde2acc13fdbd
         array (
             0 => __DIR__ . '/../..' . '/src',
         ),
+        'HyperFields\\' =>
+        array (
+            0 => __DIR__ . '/..' . '/estebanforge/hyperfields/src',
+        ),
+        'Automattic\\Jetpack\\Autoloader\\' =>
+        array (
+            0 => __DIR__ . '/..' . '/automattic/jetpack-autoloader/src',
+        ),
     );
 
     public static $classMap = array (
+        'Automattic\\Jetpack\\Autoloader\\AutoloadFileWriter' => __DIR__ . '/..' . '/automattic/jetpack-autoloader/src/AutoloadFileWriter.php',
+        'Automattic\\Jetpack\\Autoloader\\AutoloadGenerator' => __DIR__ . '/..' . '/automattic/jetpack-autoloader/src/AutoloadGenerator.php',
+        'Automattic\\Jetpack\\Autoloader\\AutoloadProcessor' => __DIR__ . '/..' . '/automattic/jetpack-autoloader/src/AutoloadProcessor.php',
+        'Automattic\\Jetpack\\Autoloader\\CustomAutoloaderPlugin' => __DIR__ . '/..' . '/automattic/jetpack-autoloader/src/CustomAutoloaderPlugin.php',
+        'Automattic\\Jetpack\\Autoloader\\ManifestGenerator' => __DIR__ . '/..' . '/automattic/jetpack-autoloader/src/ManifestGenerator.php',
         'Composer\\InstalledVersions' => __DIR__ . '/..' . '/composer/InstalledVersions.php',
+        'HyperFields\\AdminPage' => __DIR__ . '/..' . '/estebanforge/hyperfields/src/AdminPage.php',
+        'HyperFields\\Admin\\Activation' => __DIR__ . '/..' . '/estebanforge/hyperfields/src/Admin/Activation.php',
+        'HyperFields\\Admin\\ExportImportPageConfig' => __DIR__ . '/..' . '/estebanforge/hyperfields/src/Admin/ExportImportPageConfig.php',
+        'HyperFields\\Admin\\ExportImportUI' => __DIR__ . '/..' . '/estebanforge/hyperfields/src/Admin/ExportImportUI.php',
+        'HyperFields\\Admin\\Options' => __DIR__ . '/..' . '/estebanforge/hyperfields/src/Admin/Options.php',
+        'HyperFields\\Admin\\OptionsMigration' => __DIR__ . '/..' . '/estebanforge/hyperfields/src/Admin/OptionsMigration.php',
+        'HyperFields\\Admin\\TransferLogsUI' => __DIR__ . '/..' . '/estebanforge/hyperfields/src/Admin/TransferLogsUI.php',
+        'HyperFields\\Assets' => __DIR__ . '/..' . '/estebanforge/hyperfields/src/Assets.php',
+        'HyperFields\\BlockFieldAdapter' => __DIR__ . '/..' . '/estebanforge/hyperfields/src/BlockFieldAdapter.php',
+        'HyperFields\\Compatibility\\CompatibilityMigrator' => __DIR__ . '/..' . '/estebanforge/hyperfields/src/Compatibility/CompatibilityMigrator.php',
+        'HyperFields\\Compatibility\\OptionTypeRegistry' => __DIR__ . '/..' . '/estebanforge/hyperfields/src/Compatibility/OptionTypeRegistry.php',
+        'HyperFields\\Compatibility\\SectionProxy' => __DIR__ . '/..' . '/estebanforge/hyperfields/src/Compatibility/SectionProxy.php',
+        'HyperFields\\Compatibility\\SettingsCompatibility' => __DIR__ . '/..' . '/estebanforge/hyperfields/src/Compatibility/SettingsCompatibility.php',
+        'HyperFields\\Compatibility\\Store\\ArrayOptionStore' => __DIR__ . '/..' . '/estebanforge/hyperfields/src/Compatibility/Store/ArrayOptionStore.php',
+        'HyperFields\\Compatibility\\Store\\DualWriteStore' => __DIR__ . '/..' . '/estebanforge/hyperfields/src/Compatibility/Store/DualWriteStore.php',
+        'HyperFields\\Compatibility\\Store\\FallbackReadStore' => __DIR__ . '/..' . '/estebanforge/hyperfields/src/Compatibility/Store/FallbackReadStore.php',
+        'HyperFields\\Compatibility\\Store\\SingleOptionStore' => __DIR__ . '/..' . '/estebanforge/hyperfields/src/Compatibility/Store/SingleOptionStore.php',
+        'HyperFields\\Compatibility\\Store\\StoreInterface' => __DIR__ . '/..' . '/estebanforge/hyperfields/src/Compatibility/Store/StoreInterface.php',
+        'HyperFields\\Compatibility\\TabProxy' => __DIR__ . '/..' . '/estebanforge/hyperfields/src/Compatibility/TabProxy.php',
+        'HyperFields\\Compatibility\\WPSettingsCompatibility' => __DIR__ . '/..' . '/estebanforge/hyperfields/src/Compatibility/WPSettingsCompatibility.php',
+        'HyperFields\\ConditionalLogic' => __DIR__ . '/..' . '/estebanforge/hyperfields/src/ConditionalLogic.php',
+        'HyperFields\\Container\\Container' => __DIR__ . '/..' . '/estebanforge/hyperfields/src/Container/Container.php',
+        'HyperFields\\Container\\ContainerFactory' => __DIR__ . '/..' . '/estebanforge/hyperfields/src/Container/ContainerFactory.php',
+        'HyperFields\\Container\\PostMetaContainer' => __DIR__ . '/..' . '/estebanforge/hyperfields/src/Container/PostMetaContainer.php',
+        'HyperFields\\Container\\TermMetaContainer' => __DIR__ . '/..' . '/estebanforge/hyperfields/src/Container/TermMetaContainer.php',
+        'HyperFields\\Container\\UserMetaContainer' => __DIR__ . '/..' . '/estebanforge/hyperfields/src/Container/UserMetaContainer.php',
+        'HyperFields\\ContentExportImport' => __DIR__ . '/..' . '/estebanforge/hyperfields/src/ContentExportImport.php',
+        'HyperFields\\ContentTransferAdapter' => __DIR__ . '/..' . '/estebanforge/hyperfields/src/ContentTransferAdapter.php',
+        'HyperFields\\CustomField' => __DIR__ . '/..' . '/estebanforge/hyperfields/src/CustomField.php',
+        'HyperFields\\ExportImport' => __DIR__ . '/..' . '/estebanforge/hyperfields/src/ExportImport.php',
+        'HyperFields\\Field' => __DIR__ . '/..' . '/estebanforge/hyperfields/src/Field.php',
+        'HyperFields\\HeadingField' => __DIR__ . '/..' . '/estebanforge/hyperfields/src/HeadingField.php',
+        'HyperFields\\HyperFields' => __DIR__ . '/..' . '/estebanforge/hyperfields/src/HyperFields.php',
+        'HyperFields\\LibraryBootstrap' => __DIR__ . '/..' . '/estebanforge/hyperfields/src/LibraryBootstrap.php',
+        'HyperFields\\Log' => __DIR__ . '/..' . '/estebanforge/hyperfields/src/Log.php',
+        'HyperFields\\OptionField' => __DIR__ . '/..' . '/estebanforge/hyperfields/src/OptionField.php',
+        'HyperFields\\OptionsPage' => __DIR__ . '/..' . '/estebanforge/hyperfields/src/OptionsPage.php',
+        'HyperFields\\OptionsSection' => __DIR__ . '/..' . '/estebanforge/hyperfields/src/OptionsSection.php',
+        'HyperFields\\PostField' => __DIR__ . '/..' . '/estebanforge/hyperfields/src/PostField.php',
+        'HyperFields\\ReactField' => __DIR__ . '/..' . '/estebanforge/hyperfields/src/ReactField.php',
+        'HyperFields\\Registry' => __DIR__ . '/..' . '/estebanforge/hyperfields/src/Registry.php',
+        'HyperFields\\RepeaterField' => __DIR__ . '/..' . '/estebanforge/hyperfields/src/RepeaterField.php',
+        'HyperFields\\SeparatorField' => __DIR__ . '/..' . '/estebanforge/hyperfields/src/SeparatorField.php',
+        'HyperFields\\TabsField' => __DIR__ . '/..' . '/estebanforge/hyperfields/src/TabsField.php',
+        'HyperFields\\TemplateLoader' => __DIR__ . '/..' . '/estebanforge/hyperfields/src/TemplateLoader.php',
+        'HyperFields\\TermField' => __DIR__ . '/..' . '/estebanforge/hyperfields/src/TermField.php',
+        'HyperFields\\Transfer\\AuditContext' => __DIR__ . '/..' . '/estebanforge/hyperfields/src/Transfer/AuditContext.php',
+        'HyperFields\\Transfer\\AuditLogStorage' => __DIR__ . '/..' . '/estebanforge/hyperfields/src/Transfer/AuditLogStorage.php',
+        'HyperFields\\Transfer\\AuditLogger' => __DIR__ . '/..' . '/estebanforge/hyperfields/src/Transfer/AuditLogger.php',
+        'HyperFields\\Transfer\\Manager' => __DIR__ . '/..' . '/estebanforge/hyperfields/src/Transfer/Manager.php',
+        'HyperFields\\Transfer\\SchemaConfig' => __DIR__ . '/..' . '/estebanforge/hyperfields/src/Transfer/SchemaConfig.php',
+        'HyperFields\\UserField' => __DIR__ . '/..' . '/estebanforge/hyperfields/src/UserField.php',
+        'HyperFields\\Validation\\SchemaValidator' => __DIR__ . '/..' . '/estebanforge/hyperfields/src/Validation/SchemaValidator.php',
+        'WicketImporter\\Admin\\ImportAdminPage' => __DIR__ . '/../..' . '/src/Admin/ImportAdminPage.php',
+        'WicketImporter\\Admin\\MappingSettingsPage' => __DIR__ . '/../..' . '/src/Admin/MappingSettingsPage.php',
+        'WicketImporter\\Assets' => __DIR__ . '/../..' . '/src/Assets.php',
+        'WicketImporter\\BulkImport\\Database\\DbInstaller' => __DIR__ . '/../..' . '/src/BulkImport/Database/DbInstaller.php',
+        'WicketImporter\\BulkImport\\Database\\ImportStagingTable' => __DIR__ . '/../..' . '/src/BulkImport/Database/ImportStagingTable.php',
+        'WicketImporter\\BulkImport\\FileParserService' => __DIR__ . '/../..' . '/src/BulkImport/FileParserService.php',
+        'WicketImporter\\BulkImport\\ImportAdapter' => __DIR__ . '/../..' . '/src/BulkImport/ImportAdapter.php',
+        'WicketImporter\\BulkImport\\ImportPipeline' => __DIR__ . '/../..' . '/src/BulkImport/ImportPipeline.php',
+        'WicketImporter\\BulkImport\\MemberData' => __DIR__ . '/../..' . '/src/BulkImport/MemberData.php',
+        'WicketImporter\\BulkImport\\MembershipResult' => __DIR__ . '/../..' . '/src/BulkImport/MembershipResult.php',
+        'WicketImporter\\BulkImport\\PersonResolutionResult' => __DIR__ . '/../..' . '/src/BulkImport/PersonResolutionResult.php',
+        'WicketImporter\\BulkImport\\PersonResolver' => __DIR__ . '/../..' . '/src/BulkImport/PersonResolver.php',
+        'WicketImporter\\BulkImport\\Rest\\UploadController' => __DIR__ . '/../..' . '/src/BulkImport/Rest/UploadController.php',
+        'WicketImporter\\BulkImport\\ValidationService' => __DIR__ . '/../..' . '/src/BulkImport/ValidationService.php',
+        'WicketImporter\\BulkImport\\WicketMdpClient' => __DIR__ . '/../..' . '/src/BulkImport/WicketMdpClient.php',
+        'WicketImporter\\Mapping\\MappingEntry' => __DIR__ . '/../..' . '/src/Mapping/MappingEntry.php',
+        'WicketImporter\\Mapping\\MappingRepository' => __DIR__ . '/../..' . '/src/Mapping/MappingRepository.php',
+        'WicketImporter\\Mapping\\MappingSettings' => __DIR__ . '/../..' . '/src/Mapping/MappingSettings.php',
+        'WicketImporter\\Services\\Logger' => __DIR__ . '/../..' . '/src/Services/Logger.php',
+        'WicketImporter\\Support\\ColumnOrder' => __DIR__ . '/../..' . '/src/Support/ColumnOrder.php',
+        'WicketImporter\\Support\\CsvExporter' => __DIR__ . '/../..' . '/src/Support/CsvExporter.php',
+        'WicketImporter\\Support\\DefaultColumns' => __DIR__ . '/../..' . '/src/Support/DefaultColumns.php',
+        'WicketImporter\\Support\\Json' => __DIR__ . '/../..' . '/src/Support/Json.php',
+        'WicketImporter\\Support\\SecuresRequests' => __DIR__ . '/../..' . '/src/Support/SecuresRequests.php',
+        'WicketImporter\\Validators\\DateValidator' => __DIR__ . '/../..' . '/src/Validators/DateValidator.php',
+        'WicketImporter\\Validators\\EmailValidator' => __DIR__ . '/../..' . '/src/Validators/EmailValidator.php',
+        'WicketImporter\\Validators\\EnumValidator' => __DIR__ . '/../..' . '/src/Validators/EnumValidator.php',
+        'WicketImporter\\Validators\\PhoneValidator' => __DIR__ . '/../..' . '/src/Validators/PhoneValidator.php',
+        'WicketImporter\\Validators\\RequiredValidator' => __DIR__ . '/../..' . '/src/Validators/RequiredValidator.php',
+        'WicketImporter\\Validators\\UsStateValidator' => __DIR__ . '/../..' . '/src/Validators/UsStateValidator.php',
+        'WicketImporter\\Validators\\ValidatorInterface' => __DIR__ . '/../..' . '/src/Validators/ValidatorInterface.php',
+        'WicketImporter\\Validators\\ZipValidator' => __DIR__ . '/../..' . '/src/Validators/ZipValidator.php',
+        'WicketImporter\\ValueObjects\\ColumnDefinition' => __DIR__ . '/../..' . '/src/ValueObjects/ColumnDefinition.php',
+        'WicketImporter\\ValueObjects\\CsvRow' => __DIR__ . '/../..' . '/src/ValueObjects/CsvRow.php',
+        'WicketImporter\\ValueObjects\\ParseResult' => __DIR__ . '/../..' . '/src/ValueObjects/ParseResult.php',
+        'WicketImporter\\ValueObjects\\ValidationResult' => __DIR__ . '/../..' . '/src/ValueObjects/ValidationResult.php',
+        'WicketImporter\\ValueObjects\\ValidationSummary' => __DIR__ . '/../..' . '/src/ValueObjects/ValidationSummary.php',
+        'WicketImporter\\WicketImporter' => __DIR__ . '/../..' . '/src/WicketImporter.php',
     );
 
     public static function getInitializer(ClassLoader $loader)
     {
         return \Closure::bind(function () use ($loader) {
-            $loader->prefixLengthsPsr4 = ComposerStaticInitd8609246c45ab2685cffde2acc13fdbd::$prefixLengthsPsr4;
-            $loader->prefixDirsPsr4 = ComposerStaticInitd8609246c45ab2685cffde2acc13fdbd::$prefixDirsPsr4;
-            $loader->classMap = ComposerStaticInitd8609246c45ab2685cffde2acc13fdbd::$classMap;
+            $loader->prefixLengthsPsr4 = ComposerStaticInita771d0f24e42cb7006d182ed849ee8a4::$prefixLengthsPsr4;
+            $loader->prefixDirsPsr4 = ComposerStaticInita771d0f24e42cb7006d182ed849ee8a4::$prefixDirsPsr4;
+            $loader->classMap = ComposerStaticInita771d0f24e42cb7006d182ed849ee8a4::$classMap;
 
         }, null, ClassLoader::class);
     }

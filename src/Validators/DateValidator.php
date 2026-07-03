@@ -1,4 +1,5 @@
 <?php
+
 declare(strict_types=1);
 
 namespace WicketImporter\Validators;
@@ -13,22 +14,22 @@ use WicketImporter\ValueObjects\ValidationResult;
  */
 final class DateValidator implements ValidatorInterface
 {
-	public function validate( mixed $value, array $context ): ValidationResult
-	{
-		$date = trim( (string) $value );
+    public function validate(mixed $value, array $context): ValidationResult
+    {
+        $date = trim((string) $value);
 
-		if ( $date === '' ) {
-			return ValidationResult::valid();
-		}
+        if ($date === '') {
+            return ValidationResult::valid();
+        }
 
-		if ( preg_match( '/^(\d{4})-(\d{2})-(\d{2})$/', $date, $m ) !== 1 ) {
-			return new ValidationResult( ValidationResult::STATUS_INVALID, 'Date must be in YYYY-MM-DD format.' );
-		}
+        if (preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', $date, $m) !== 1) {
+            return new ValidationResult(ValidationResult::STATUS_INVALID, 'Date must be in YYYY-MM-DD format.');
+        }
 
-		if ( ! checkdate( (int) $m[2], (int) $m[3], (int) $m[1] ) ) {
-			return new ValidationResult( ValidationResult::STATUS_INVALID, 'Invalid calendar date.' );
-		}
+        if (!checkdate((int) $m[2], (int) $m[3], (int) $m[1])) {
+            return new ValidationResult(ValidationResult::STATUS_INVALID, 'Invalid calendar date.');
+        }
 
-		return ValidationResult::valid();
-	}
+        return ValidationResult::valid();
+    }
 }
