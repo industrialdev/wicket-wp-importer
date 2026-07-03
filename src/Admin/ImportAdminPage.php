@@ -51,16 +51,19 @@ class ImportAdminPage
 
 	public function __construct()
 	{
-		// Priority 20 so the parent 'wicket-settings' top-level menu (registered by
-		// wicket-wp-base-plugin / WPSettings at admin_menu) has run first. Without this,
-		// add_submenu_page() resolves the importer's hookname using a different
-		// page_type than the later access check does (registration sees no
-		// admin_page_hooks entry for the parent yet, the access check sees the
-		// resolved 'wicket' title), producing an orphan $_registered_pages key
-		// and a 'Sorry, you are not allowed to access this page' denial. Matches
-		// the convention used by every other Wicket submenu (gravity-forms p20,
-		// account-centre p99, financial-fields p999).
-		add_action( 'admin_menu', [ $this, 'registerMenu' ], 20 );
+		// Priority 21 (after the WPSettings lib's 'Settings' submenu at p20) so that:
+		//   1. The parent 'wicket-settings' top-level menu (Wicket_Admin, admin_menu
+		//      p10) has run before us - prevents the hookname-resolution race that
+		//      caused 'Sorry, you are not allowed to access this page' (registration
+		//      vs access-check resolved different page_type prefixes when the parent
+		//      wasn't in $admin_page_hooks yet).
+		//   2. The Settings submenu registers first. WP auto-inserts a duplicate
+		//      parent link ('Wicket') only on the FIRST add_submenu_page call whose
+		//      menu_slug differs from the parent slug. Settings uses slug===parent
+		//      (no auto-insert), and by the time we register, the parent already
+		//      has a submenu - so the duplicate 'Wicket' child never appears, and
+		//      the order is Settings then Importer.
+		add_action( 'admin_menu', [ $this, 'registerMenu' ], 21 );
 	}
 
 	/**
@@ -72,8 +75,8 @@ class ImportAdminPage
 	{
 		add_submenu_page(
 			'wicket-settings',
-			__( 'Import', 'wicket-wp-importer' ),
-			__( 'Import', 'wicket-wp-importer' ),
+			__( 'Importer', 'wicket-wp-importer' ),
+			__( 'Importer', 'wicket-wp-importer' ),
 			'manage_options',
 			'wicket-wp-importer',
 			[ $this, 'renderPage' ]
