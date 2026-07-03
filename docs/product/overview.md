@@ -51,4 +51,4 @@ Some rows may end with status **Needs review**. This means the MDP person was cr
 
 - [Upload a CSV](../guides/upload-a-csv.md) — step-by-step
 - [Review flagged rows](../guides/review-flagged-rows.md) — what the validation screen shows
-- Workspace `docs/importer-oba-reqs.md` — OBA-specific requirements (tier logic, Bar ID, field sync)
+- Workspace `docs/importer-oba-reqs-tasks.md` — OBA-specific requirements (tier logic, Bar ID, field sync)

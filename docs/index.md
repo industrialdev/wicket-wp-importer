@@ -30,6 +30,6 @@ This `docs/` folder is the **reference for what has shipped** in this plugin. It
 The not-yet-built **Cheque flow** (Phases 4-5) and the **OBA extension spec** (Phase 6, lives in the client child theme) are forward-looking scope:
 
 - [engineering/roadmap.md](engineering/roadmap.md) — phase status, remaining task breakdown, deferred scope, transition gates (now in this repo)
-- `docs/importer-oba-reqs.md` — OBA product requirements (tier logic, Bar ID, field sync, conflict tiers). Extension spec, not core; stays at workspace level
+- `docs/importer-oba-reqs-tasks.md` — OBA product requirements (tier logic, Bar ID, field sync, conflict tiers). Extension spec, not core; stays at workspace level
 
 When this reference and the code disagree, **the code is the source of truth**.

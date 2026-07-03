@@ -17,7 +17,7 @@ There are two consumers of the same hook surface:
 
 Both subscribe to the same hooks; they never share a request path (OBA = inline `runImport()`, Cheque = `BatchProcessor` + Action Scheduler).
 
-> **Reference implementation:** the OBA extension (Phase 6) is the canonical example of hooking this plugin. See workspace `docs/importer-oba-reqs.md` (OBA product requirements — extension spec, not core).
+> **Reference implementation:** the OBA extension (Phase 6) is the canonical example of hooking this plugin. See workspace `docs/importer-oba-reqs-tasks.md` (OBA product requirements — extension spec, not core).
 
 ---
 

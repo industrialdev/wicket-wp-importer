@@ -80,7 +80,7 @@ Without this, OBA dedup is broken.
 |---|------|--------|
 | 34 | Hook `wicket_import_check_conflict`. For each row with `mdp_uuid` populated: (a) query MDP active memberships for UUID, (b) query MDP service identities for Bar ID. Return `['skip' => true, 'message' => '<tier-specific reason>']` based on combination: (1) email+active+Bar ID → "Email already assigned with active membership and Bar ID. Please review." (2) email+active+no Bar ID → "Email already assigned in the system with active membership. Please review." (3) email+no active+Bar ID → "Email already assigned in the system with Bar ID. Please review." (4) email+no active+no Bar ID+name mismatch → "Email already assigned in the system with no name match. Please review." (5) email+no active+no Bar ID+name match → Scenario B proceed (return `['skip' => false]`). **The `$result` parameter received by the filter contains: `['mdp_uuid' => ?string, 'row' => array, 'conflict' => bool]`.** | **3** |
 
-**Reference:** the OBA extension requirements (tier logic, Bar ID, field sync) are the canonical hook-implementation example. See workspace `docs/importer-oba-reqs.md`.
+**Reference:** the OBA extension requirements (tier logic, Bar ID, field sync) are the canonical hook-implementation example. See workspace `docs/importer-oba-reqs-tasks.md`.
 
 **Verify:** Full OBA sample CSV import. All 7 rows: Bar IDs generated sequentially, tiers assigned correctly, MDP profiles populated, other states synced, confirmation screen shows Bar ID + Tier + View in MDP link.
 

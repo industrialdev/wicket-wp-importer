@@ -168,7 +168,7 @@ The shipped architecture is documented **inside this repo** under `docs/engineer
 
 One doc stays at the **workspace level** because it is OBA extension product spec (child theme territory, not core):
 
-- `docs/importer-oba-reqs.md` — OBA product requirements (tier logic, Bar ID, field sync, conflict tiers)
+- `docs/importer-oba-reqs-tasks.md` — OBA product requirements (tier logic, Bar ID, field sync, conflict tiers)
 
 When a doc and the code disagree, **the code is the source of truth**.
 
