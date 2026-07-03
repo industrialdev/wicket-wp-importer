@@ -156,16 +156,21 @@ Never invent option keys or class names. If uncertain, omit the field and note t
 
 ---
 
-## Source of truth forImporter architecture
+## Source of truth for Importer architecture
 
-This plugin's full design lives in the workspace-level plan docs:
+The shipped architecture is documented **inside this repo** under `docs/engineering/`:
 
-- `docs/importer-plan-architecture.md` — AD1-AD14, file structure, DB schema, class responsibilities, hook catalog (canonical)
-- `docs/importer-plan-workstreams.md` — Phases 0-7 task breakdown
-- `docs/importer-plan-delivery-waves.md` — Wave sequencing (OBA first, Cheque Wave 2)
-- `docs/importer-oba-reqs.md` — OBA requirements
+- [architecture.md](engineering/architecture.md) — identity, file structure, constants, service locator, AD catalog
+- [hooks.md](engineering/hooks.md) — full `wicket_import_*` extension surface (the only customization point)
+- [import-pipeline.md](engineering/import-pipeline.md) — three-phase orchestrator, status mapping, ImportAdapter
+- [flow-diagrams.md](engineering/flow-diagrams.md) — two-lane system map, hook surface, cheque batch lifecycle (Mermaid)
+- [roadmap.md](engineering/roadmap.md) — phase status, remaining task breakdown, deferred scope
 
-Those workspace docs are the **plan**. The files in this `docs/` folder are the **product/engineering/user reference** for what has shipped. When the two disagree, the code is right and the workspace plan docs should be updated.
+One doc stays at the **workspace level** because it is OBA extension product spec (child theme territory, not core):
+
+- `docs/importer-oba-reqs.md` — OBA product requirements (tier logic, Bar ID, field sync, conflict tiers)
+
+When a doc and the code disagree, **the code is the source of truth**.
 
 ---
 

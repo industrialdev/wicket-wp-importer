@@ -17,7 +17,7 @@ There are two consumers of the same hook surface:
 
 Both subscribe to the same hooks; they never share a request path (OBA = inline `runImport()`, Cheque = `BatchProcessor` + Action Scheduler).
 
-> **Reference implementation:** the OBA extension (Phase 6) is the canonical example of hooking this plugin. See workspace `docs/importer-oba-reqs.md`.
+> **Reference implementation:** the OBA extension (Phase 6) is the canonical example of hooking this plugin. See workspace `docs/importer-oba-reqs.md` (OBA product requirements — extension spec, not core).
 
 ---
 
@@ -219,4 +219,5 @@ These hooks are part of the documented contract but the cheque flow is not yet b
 - [Architecture overview](architecture.md) — file structure, namespaces, decision records (AD1-AD14)
 - [Import pipeline](import-pipeline.md) — the three-phase orchestrator (`runValidation`, `runConflictCheck`, `runImport`)
 - [REST endpoints](rest-endpoints.md) — route table, request/response shapes
-- Workspace `docs/importer-plan-architecture.md` — full AD catalog and the canonical extension-point table
+- [Architecture](architecture.md) — full AD catalog and the canonical extension-point table
+- [Flow diagrams](flow-diagrams.md) — visual map of the hook surface and the two lanes

@@ -25,7 +25,7 @@ use WicketImporter\WicketImporter as Plugin;
  * and the confirmation screen (re-fired so post-import state is reflected,
  * e.g. OBA's "Next Bar ID").
  *
- * @see Task 7 in docs/importer-plan-workstreams.md
+ * @see docs/engineering/rest-endpoints.md
  */
 class ImportAdminPage
 {

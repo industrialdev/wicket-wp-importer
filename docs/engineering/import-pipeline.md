@@ -114,4 +114,4 @@ Lookup delegates to rung-2 helper `wicket_get_person_by_email` + secondary-email
 
 - [Hooks](hooks.md) — the lifecycle filters/actions fired by this pipeline
 - [REST endpoints](rest-endpoints.md) — the `/run` endpoint that triggers this
-- Workspace `docs/importer-plan-workstreams.md` Phase 3 Task 12 audit notes for the post-RESOLVED `needs_review` semantic
+- [Roadmap](roadmap.md) — phase status and transition gates; the `needs_review` post-RESOLVED semantic is the orphan-person / stale-WP-relationship case an admin must address manually

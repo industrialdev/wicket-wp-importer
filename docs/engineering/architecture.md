@@ -87,7 +87,7 @@ wicket-wp-importer/
 └── docs/                           # this folder
 ```
 
-> The Phase 4 `Cheque/` subtree is omitted here. See workspace `docs/importer-plan-architecture.md` for the full planned tree.
+> The Phase 4 `Cheque/` subtree is omitted here. See [roadmap](roadmap.md) for the planned cheque phases.
 
 ## Constants
 
@@ -128,11 +128,11 @@ Two tables, both namespaced via `$wpdb->prefix`:
 - `{$wpdb->prefix}wicket_import_staged_records` — session-based staging. One row per CSV row. Carries `validation_status`, `import_status`, `mdp_uuid`, `extension_metadata`, `order_id`, `subscription_ids`.
 - `{$wpdb->prefix}wicket_import_batches` — persistent batch table for the cheque flow (Phase 4). Schema is already installed; not yet used.
 
-Full column/index reference: workspace `docs/importer-plan-architecture.md` → "Database Schema".
+Full column/index reference: the schema is encoded in `src/Services/DbInstaller.php` (`createTables()`).
 
 ## Architectural Decisions (AD1-AD15)
 
-Encoded directly in the code. The full catalog lives in workspace `docs/importer-plan-architecture.md`. The most load-bearing ones for daily work:
+Encoded directly in the code. The full catalog is summarized below; the load-bearing ones for daily work:
 
 - **AD1** — Core stays generic; client logic lives in extensions.
 - **AD6** — Two processors, distinct scaling paths (OBA inline 200-row cap; Cheque AS 50/chunk).
@@ -152,7 +152,7 @@ Encoded directly in the code. The full catalog lives in workspace `docs/importer
 - **Phase 6** (OBA extension in OBA child theme) — not started
 - **Phase 7** (polish + E2E tests) — not started
 
-See workspace `docs/importer-plan-delivery-waves.md` for sequencing.
+See [roadmap](roadmap.md) for phase status, sequencing, and transition gates.
 
 ## See also
 

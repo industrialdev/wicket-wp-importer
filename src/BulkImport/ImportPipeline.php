@@ -43,8 +43,8 @@ use WicketImporter\WicketImporter as Plugin;
  * runImport is currently the guard + timing shell. The row loop + ImportAdapter
  * hand-off lands with Task 12.4.
  *
- * @see Task 12  in docs/importer-plan-workstreams.md
- * @see PersonResolver  checkConflict() (12.3) + resolve() (12.4).
+ * @see docs/engineering/import-pipeline.md
+ * @see PersonResolver  checkConflict() + resolve().
  */
 final class ImportPipeline
 {
