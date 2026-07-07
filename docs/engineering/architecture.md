@@ -139,6 +139,7 @@ Encoded directly in the code. The full catalog is summarized below; the load-bea
 - **AD8** — Bar ID is MDP-provided. The extension reads it back; never mints one locally.
 - **AD10** — `ImportAdapter` fires `wicket_import_create_subscription`; core never calls WC Subscriptions directly.
 - **AD11** — `wicket_import_person_data` filter fires before every MDP create/update (avoids double PATCH).
+- **AD12** — `runConflictCheck` is a thin shell: it computes a core verdict, then fires `wicket_import_check_conflict` so an extension (OBA's 4-tier email + Bar ID check) can override. The core verdict is the filter's starting point.
 - **AD14** — Every CSV export prefixes cells starting with `= + - @ \t \r` with a tab. Injection-safe via `Support\CsvExporter`.
 - **AD15** — MDP integration priority ladder: `wicket-wp-memberships` → `wicket-wp-base-plugin` → `wicket-wp-account-centre` → direct MDP API (last resort; document WHY).
 

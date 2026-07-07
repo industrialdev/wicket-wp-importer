@@ -190,15 +190,15 @@ Both subscribe to the same hooks; they never share a request path (OBA = inline 
 
 ---
 
-## Commerce (Cheque flow — Phase 4, NOT YET FIRED)
+## Commerce (1 fires today; 2 planned, Phase 4)
 
-These hooks are part of the documented contract but the cheque flow is not yet built. They are listed here so extension authors know the intended shape; do not subscribe to them yet.
+`wicket_import_create_subscription` fires today (OBA no-order variant). The two cheque/LockBox hooks below are part of the documented contract but their firing code is not yet built — listed so extension authors know the intended shape; do not subscribe to them yet.
 
 ### `wicket_import_create_subscription`
-- **Type**: Action (planned)
+- **Type**: Action
 - **Signature**: `do_action('wicket_import_create_subscription', int $orderId, int $personId, array $row)`
 - **Purpose**: Extension creates the WC subscription. OBA subscribes (subscription, no order). Cheque code in core will subscribe (order-linked subscription).
-- **Status**: **planned**. The OBA-path no-order variant currently fires from `ImportAdapter` with `$orderId = $membership_id`; the signature is stable, the order-linked variant is Phase 4.
+- **Status**: **fires today** (OBA no-order variant; `ImportAdapter` fires it with `$orderId = $membership_id`). The signature is stable; the order-linked variant is Phase 4.
 
 ### `wicket_import_create_order`
 - **Type**: Action (planned, Phase 4)
