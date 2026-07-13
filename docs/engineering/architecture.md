@@ -76,7 +76,7 @@ wicket-wp-importer/
 │   │   └── Logger.php              # WC_Logger wrapper, error_log fallback
 │   │
 │   └── Support/                    # namespace WicketImporter\Support
-│       ├── CsvExporter.php         # AD14 CSV injection prevention
+│       ├── CsvExporter.php         # AD14 CSV injection prevention (BC shim; delegates to WicketWP\Support\CsvExporter in wicket-wp-base-plugin since WWID-1907 phase 0)
 │       ├── ColumnOrder.php         # Shared column-order resolver
 │       ├── Json.php                # Shared staging-table JSON blob decoder
 │       └── SecuresRequests.php     # manage_options + nonce trait

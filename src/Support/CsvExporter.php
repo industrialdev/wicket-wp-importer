@@ -4,41 +4,42 @@ declare(strict_types=1);
 
 namespace WicketImporter\Support;
 
+use WicketWP\Support\CsvExporter as BaseCsvExporter;
+
 /**
- * Safe CSV export with formula-injection prevention (AD14).
+ * Backwards-compatibility shim.
  *
- * Any cell whose first character is one of =, +, -, @, tab, or carriage return
- * is prefixed with a single tab so spreadsheet apps (Excel, LibreOffice) treat
- * it as text rather than evaluating it as a formula.
+ * The canonical implementation now lives in wicket-wp-base-plugin at
+ * WicketWP\Support\CsvExporter (extracted in WWID-1907 phase 0 so the
+ * account-centre plugin can share it without inverting the dependency
+ * direction — AD15). This class is preserved so existing importer call sites
+ * keep resolving under their old namespace. It delegates every call to the
+ * base-plugin implementation and adds no behaviour of its own.
+ *
+ * Prefer depending on WicketWP\Support\CsvExporter directly in new code.
+ *
+ * Note: this shim depends on wicket-wp-base-plugin being active (declared in
+ * the importer's `Requires Plugins` header). It resolves at WordPress runtime
+ * and under the central QA autoload map (qa/pest.php), but a standalone
+ * `composer install` of the importer repo alone will NOT autoload the
+ * WicketWP\ namespace — there is no composer dependency on base-plugin by
+ * design (matches the cross-plugin convention used across the stack).
  */
-final class CsvExporter
+class CsvExporter
 {
-    /**
-     * Leading characters that trigger escaping. All single-byte ASCII, so a
-     * byte-level check on $string[0] is correct even for multibyte values.
-     */
-    private const DANGEROUS_LEADING_CHARS = ['=', '+', '-', '@', "\t", "\r"];
+    private BaseCsvExporter $delegate;
+
+    public function __construct()
+    {
+        $this->delegate = new BaseCsvExporter();
+    }
 
     /**
      * Escape a single cell value against CSV formula injection.
      */
     public function escapeCellValue(mixed $value): string
     {
-        if ($value === null) {
-            return '';
-        }
-
-        $s = is_string($value) ? $value : (string) $value;
-
-        if ($s === '') {
-            return '';
-        }
-
-        if (in_array($s[0], self::DANGEROUS_LEADING_CHARS, true)) {
-            return "\t" . $s;
-        }
-
-        return $s;
+        return $this->delegate->escapeCellValue($value);
     }
 
     /**
@@ -49,41 +50,17 @@ final class CsvExporter
      */
     public function writeRow(array $values, $handle): void
     {
-        $escaped = array_map(fn (mixed $v): string => $this->escapeCellValue($v), array_values($values));
-
-        fputcsv($handle, $escaped, ',', '"', '');
+        $this->delegate->writeRow($values, $handle);
     }
 
     /**
      * Stream a CSV download to the browser and terminate the request.
-     *
-     * Note: calling exit() from a REST callback short-circuits WP REST's normal
-     * dispatch (rest_post_dispatch, rest_pre_serve_request, rest_send_cors_headers).
-     * Accepted tradeoff for v1 admin-only downloads (same-origin). If CSV routes
-     * ever need to serve a different origin or interoperate with CORS/audit
-     * plugins, switch to building the body into a string and returning a
-     * WP_REST_Response with these headers instead.
      *
      * @param string            $filename Download filename (sanitized via sanitize_file_name()).
      * @param list<list<mixed>> $rows     Rows to write; the first row is the header row.
      */
     public function download(string $filename, array $rows): never
     {
-        nocache_headers();
-        header('Content-Description: File Transfer');
-        header('Content-Type: text/csv; charset=utf-8');
-        header('Content-Disposition: attachment; filename="' . sanitize_file_name($filename) . '"');
-        // Prevent MIME sniffing from re-interpreting the CSV as HTML.
-        header('X-Content-Type-Options: nosniff');
-
-        $out = fopen('php://output', 'wb');
-        if ($out !== false) {
-            foreach ($rows as $row) {
-                $this->writeRow($row, $out);
-            }
-            fclose($out);
-        }
-
-        exit;
+        $this->delegate->download($filename, $rows);
     }
 }
