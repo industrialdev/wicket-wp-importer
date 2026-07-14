@@ -246,6 +246,7 @@
 /* ---- Upload buttons (Task 8.2/8.3) -------------------------------- */
 
 .wicket-importer-upload-section .wicket-importer-actions {
+	justify-content: flex-end;
 	margin-top: 8px;
 }
 

@@ -83,7 +83,7 @@ class ImportAdminPage
      */
     public function registerMenu(): void
     {
-        $page = HyperFields::makeAdminPage(__('Wicket Import', 'wicket-wp-importer'), 'wicket-wp-importer')
+        $page = HyperFields::makeAdminPage(__('Wicket Importer', 'wicket-wp-importer'), 'wicket-wp-importer')
             ->setMenuTitle(__('Importer', 'wicket-wp-importer'))
             ->setParentSlug('wicket-settings')
             ->setCapability('manage_options')
@@ -224,9 +224,6 @@ class ImportAdminPage
 			<div class="wicket-importer-actions">
 				<a class="button wicket-importer-template-btn" href="<?php echo esc_url(wp_nonce_url($rest . '/template', 'wp_rest', '_wpnonce')); ?>">
 					<?php esc_html_e('Download CSV template', 'wicket-wp-importer'); ?>
-				</a>
-				<a class="button" href="<?php echo esc_url($this->historyScreenUrl()); ?>">
-					<?php esc_html_e('View import history', 'wicket-wp-importer'); ?>
 				</a>
 			</div>
 		</div>

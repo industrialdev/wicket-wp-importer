@@ -113,6 +113,26 @@ Without this, OBA dedup is broken.
 | 18 | `MappingResolver.php`: load WP roles fresh from DB (not stale MemberData), filter mappings by matching role/section, separate into late_fee / discount / section buckets, apply coupon vs product logic | **3** |
 | 19 | `ProductResolver.php`: orchestrate Tier + Section + Mapping resolvers, validate products exist, check `WC_Subscriptions_Product::is_subscription()` for membership/section products, calculate expected total vs CSV total, return `ResolvedProducts` | **3** |
 
+### 19a. Shared resolver contract (bundle renewal x Lockbox)
+
+**Status:** agreed 2026-07-14 (Esteban + Adrian). Single source of truth: workspace `docs/importer-bundle-renewal-consensus.md`.
+
+The Phase 4 resolvers (16-19) are a **shared service**, not cheque-internal. The Memberships plugin's bundle-renewal flow calls them through three `wicket_mship_bundle_*` filters it fires. This Importer subscribes to two of them. No duplication of tier / promo / late-fee logic across the two flows.
+
+Architecture is **PULL**: the bundle renewal order is owned by the Memberships plugin; this Importer only answers per-member queries. The cheque divergence check (order total vs bank-file total) does not apply to bundles, so PULL is clean.
+
+| # | Filter (working name) | Fires in (Memberships plugin) | Lockbox action | Contract |
+|---|---|---|---|---|
+| 1 | `wicket_mship_bundle_line_item_extra_meta` | `add_subscription_line_item()` (member-add, not renewal) | **does not subscribe** (out of scope) | returns `meta_key => meta_value` array |
+| 2 | `wicket_mship_bundle_renewal_member_tier_product` | `process_bundle_renewal_members()` (once per member, every renewal) | **TierResolver answers** | full override; returns `['tier_post_id', 'product_id']` or null to let core proceed. Bypasses core `renewal_type` / `next_tier_id` when non-null |
+| 3 | `wicket_mship_bundle_renewal_line_item_price` | action on WCS `wcs_renewal_order_created` (once per line item) | **MappingResolver answers** (promo + late-fee) | single-channel: callback mutates the passed `$renewal_order` (add promo / late-fee lines), returns nothing load-bearing. **Memberships plugin owns the recalc** afterward |
+
+**Late-fee tally** ("tally # of late fee roles, match qty of late fee product") is owned by the Filter 3 implementer (MappingResolver here), reading the shared late-fee mapping table. The filter contract does not encode it.
+
+**Open:** OD1, where the shared discount/promo + late-fee mapping tables physically live. Esteban's lean is this repo's HyperFields (`MappingSettings`, task 15.2 already specs the 3 repeater sections). Does not block the filter contracts. See consensus doc.
+
+**Naming:** all three filter names are working names pending a naming-convention pass on the Memberships side. Update the consensus doc when that lands.
+
 ### 20. Order Creator (cheque, On Hold)
 
 | # | Task | Effort |
