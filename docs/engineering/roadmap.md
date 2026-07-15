@@ -115,7 +115,7 @@ Without this, OBA dedup is broken.
 
 ### 19a. Shared resolver contract (bundle renewal x Lockbox)
 
-**Status:** agreed 2026-07-14 (Esteban + Adrian). Single source of truth: workspace `docs/importer-bundle-renewal-consensus.md`.
+**Status:** agreed 2026-07-14 (Esteban + Adrian). Single source of truth: Wicket Atlas ADR `atlas/decisions/0002-bundle-renewal-lockbox-pull.md` (wicket-atlas repo, sibling of `qa/` in the stack assembly).
 
 The Phase 4 resolvers (16-19) are a **shared service**, not cheque-internal. The Memberships plugin's bundle-renewal flow calls them through three `wicket_mship_bundle_*` filters it fires. This Importer subscribes to two of them. No duplication of tier / promo / late-fee logic across the two flows.
 

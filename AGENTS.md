@@ -36,3 +36,16 @@ Git history favors short, imperative, scope-specific messages.
 - Enforce capability checks (`manage_options`) and nonces for admin actions and REST endpoints.
 - All DB queries via `$wpdb->prepare()`.
 - CSV download links rendered as `<a href>` must be wrapped in `wp_nonce_url($url, 'wp_rest', '_wpnonce')` (an anchor cannot send the `X-WP-Nonce` header).
+
+## Release & Branch Workflow
+All work happens on branches. `main` is locked; changes land via peer-reviewed
+Pull Request (devs cross-review each other). Never commit to `main` directly, and never push or open a
+PR without explicit human approval.
+
+Merging a PR to `main` **auto-releases** via the `wicket-release-bot` GitHub
+App: version bump, `CHANGELOG.md` update, git tag. Never bump versions or
+create tags by hand. The bump level comes from a marker in the PR title
+(squash-merge makes it the commit message): _(none)_ / `#patch` = patch, `#minor`,
+`#major`, or `#norelease` (no release; use for docs/tooling-only merges).
+Conventional commit prefixes (`feat:`, `fix:`, `docs:`, ...) drive changelog
+grouping; a `!` (e.g. `feat!:`) flags a BREAKING change.
