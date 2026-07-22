@@ -74,15 +74,11 @@ final class ColumnOrder
     {
         /** @var list<ColumnDefinition> $columns */
         $columns = apply_filters('wicket_import_csv_columns', [], ['context' => 'bulk']);
-        $columns = is_array($columns) ? $columns : [];
 
-        // Fall back to the baseline person columns so export ordering matches
-        // the upload/validation resolution (see UploadController::resolveColumns).
-        if ($columns === []) {
-            $columns = DefaultColumns::bulk();
-        }
-
-        return $columns;
+        // Core always contributes the baseline identity columns and layers the
+        // extension's domain columns on top, so export ordering matches the
+        // upload/validation resolution. See DefaultColumns::mergeWith().
+        return DefaultColumns::mergeWith(is_array($columns) ? $columns : []);
     }
 
     /**

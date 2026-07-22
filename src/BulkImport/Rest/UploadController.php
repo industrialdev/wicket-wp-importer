@@ -539,14 +539,12 @@ final class UploadController
         /** @var list<ColumnDefinition> $columns */
         $columns = apply_filters('wicket_import_csv_columns', [], ['context' => $context]);
 
-        // Core registers no client-specific columns (AD1). When no extension
-        // supplies any either, fall back to the universal person identity so the
-        // importer is usable standalone and the CSV template is never empty.
-        if ($columns === []) {
-            $columns = DefaultColumns::bulk();
-        }
-
-        return $columns;
+        // Core always contributes the baseline identity columns (first_name /
+        // last_name / email) and layers the extension's domain columns on top
+        // (AD1 governs domain knowledge, not identity plumbing). Extension
+        // entries win on canonical-key collision so a client can intentionally
+        // redefine a baseline column. See DefaultColumns::mergeWith().
+        return DefaultColumns::mergeWith(is_array($columns) ? $columns : []);
     }
 
     /**

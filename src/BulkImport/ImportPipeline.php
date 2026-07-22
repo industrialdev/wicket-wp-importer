@@ -516,14 +516,10 @@ final class ImportPipeline
         /** @var list<ColumnDefinition> $columns */
         $columns = apply_filters('wicket_import_csv_columns', [], ['context' => 'bulk']);
 
-        // Core registers no client-specific columns (AD1). When no extension
-        // supplies any either, fall back to the universal person identity so
-        // validation re-pass is consistent with the upload pass.
-        if ($columns === []) {
-            $columns = DefaultColumns::bulk();
-        }
-
-        return $columns;
+        // Core always contributes the baseline identity columns and layers the
+        // extension's domain columns on top, so the re-validation pass is
+        // consistent with the upload pass. See DefaultColumns::mergeWith().
+        return DefaultColumns::mergeWith(is_array($columns) ? $columns : []);
     }
 
     /**
