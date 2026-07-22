@@ -27,6 +27,12 @@ use WicketImporter\ValueObjects\ColumnDefinition;
 final class DefaultColumns
 {
     /**
+     * Global gender enum values. X = don't want to specify. A client with a
+     * narrower set (e.g. OBA accepts M/F only) overrides the gender column by
+     * canonical key via {@see mergeWith()}.
+     */
+    public const GENDER_VALUES = ['M', 'F', 'X'];
+    /**
      * The baseline bulk-import column set.
      *
      * @return list<ColumnDefinition>
@@ -56,6 +62,66 @@ final class DefaultColumns
                 dedup: true,
                 aliases: ['email address', 'email_address', 'e-mail', 'e mail', 'mail'],
             ),
+        ];
+    }
+
+    /**
+     * Reusable person-profile column bundle with pre-wired format validators.
+     *
+     * Generic contact + demographic fields any client might collect: address
+     * (2 lines), city, US state, ZIP, phone, fax, birthdate, and gender. These
+     * live in core (not a client extension) because they are reusable plumbing,
+     * not domain knowledge: a future client collecting the same fields should
+     * not have to re-declare them. AD1 governs client-specific KNOWLEDGE; a
+     * postal address is universal.
+     *
+     * Columns carry FORMAT validators only (us_state / zip / phone / date /
+     * enum). Required-ness is opt-in: pass the canonical keys of the fields a
+     * client mandates and they get required=true (header mandatory) plus a
+     * RequiredValidator spec (cell non-empty). A client that collects a field
+     * optionally still gets format validation on non-empty values.
+     *
+     * Gender defaults to the {@see GENDER_VALUES} enum (M/F/X). A client with a
+     * narrower gender set overrides the gender column by key.
+     *
+     * @param list<string> $required Canonical keys to mark mandatory (header + value).
+     *
+     * @return list<ColumnDefinition>
+     */
+    public static function profile(array $required = []): array
+    {
+        $required = array_values(array_filter($required, 'is_string'));
+        $isRequired = static fn (string $key): bool => in_array($key, $required, true);
+
+        $make = static function (string $key, string $label, array $aliases, array $validators) use ($isRequired): ColumnDefinition {
+            return new ColumnDefinition(
+                key: $key,
+                label: $label,
+                required: $isRequired($key),
+                validators: $isRequired($key) ? array_merge([['type' => 'required']], $validators) : $validators,
+                aliases: $aliases,
+            );
+        };
+
+        return [
+            $make('address_1', __('Address Line 1', 'wicket-wp-importer'),
+                ['address1', 'address line one', 'address 1', 'street', 'street address'], []),
+            $make('address_2', __('Address Line 2', 'wicket-wp-importer'),
+                ['address2', 'address line two', 'address 2', 'unit', 'apt'], []),
+            $make('city', __('City', 'wicket-wp-importer'),
+                ['town', 'locality'], []),
+            $make('state', __('State', 'wicket-wp-importer'),
+                ['st', 'state province', 'province', 'region'], [['type' => 'us_state']]),
+            $make('zip', __('ZIP', 'wicket-wp-importer'),
+                ['zip code', 'zip_code', 'postal code', 'postal_code', 'postcode', 'postal'], [['type' => 'zip']]),
+            $make('phone', __('Phone', 'wicket-wp-importer'),
+                ['phone number', 'phone_number', 'telephone', 'tel', 'mobile', 'cell'], [['type' => 'phone']]),
+            $make('fax', __('Fax', 'wicket-wp-importer'),
+                ['fax number', 'fax_number', 'facsimile'], [['type' => 'phone']]),
+            $make('birthdate', __('Birthdate', 'wicket-wp-importer'),
+                ['birth date', 'birth_date', 'dob', 'date of birth', 'birthday', 'birthdate (ymd)'], [['type' => 'date']]),
+            $make('gender', __('Gender', 'wicket-wp-importer'),
+                ['sex'], [['type' => 'enum', 'values' => self::GENDER_VALUES]]),
         ];
     }
 
