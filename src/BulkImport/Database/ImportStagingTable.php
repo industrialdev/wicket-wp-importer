@@ -340,6 +340,30 @@ class ImportStagingTable
     }
 
     /**
+     * Read extension metadata for a single row.
+     *
+     * The read-merge-write counterpart to {@see updateExtensionMetadata()}, so
+     * extensions (e.g. OBA's Bar ID reader) can add their own keys without
+     * clobbering keys another extension wrote.
+     *
+     * @return array<string,mixed> Decoded metadata, or [] when the row or column is empty.
+     */
+    public function getExtensionMetadata(int $id): array
+    {
+        global $wpdb;
+        $raw = $wpdb->get_var(
+            $wpdb->prepare(
+                "SELECT extension_metadata FROM {$this->table_name} WHERE id = %d",
+                $id
+            )
+        );
+
+        $decoded = $raw !== null && $raw !== '' ? json_decode((string) $raw, true) : null;
+
+        return is_array($decoded) ? $decoded : [];
+    }
+
+    /**
      * Delete all rows for a session.
      */
     public function deleteSession(string $session_id): void
