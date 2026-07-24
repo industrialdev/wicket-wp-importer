@@ -7,15 +7,15 @@ $baseDir   = dirname($vendorDir);
 
 return array(
 	'13f65e44352b0407f05cb5a5e174612b' => array(
-		'version' => '1.4.4.0',
+		'version' => '1.4.5.0',
 		'path'    => $vendorDir . '/estebanforge/hyperfields/includes/helpers.php'
 	),
 	'0522701f5d113a2ff6373ccc834dd7d6' => array(
-		'version' => '1.4.4.0',
+		'version' => '1.4.5.0',
 		'path'    => $vendorDir . '/estebanforge/hyperfields/includes/backward-compatibility.php'
 	),
 	'c1c635284e1ca7836efff979fb09390f' => array(
-		'version' => '1.4.4.0',
+		'version' => '1.4.5.0',
 		'path'    => $vendorDir . '/estebanforge/hyperfields/bootstrap.php'
 	),
 );

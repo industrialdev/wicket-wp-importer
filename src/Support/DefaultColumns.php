@@ -32,6 +32,7 @@ final class DefaultColumns
      * canonical key via {@see mergeWith()}.
      */
     public const GENDER_VALUES = ['M', 'F', 'X'];
+
     /**
      * The baseline bulk-import column set.
      *
@@ -104,24 +105,60 @@ final class DefaultColumns
         };
 
         return [
-            $make('address_1', __('Address Line 1', 'wicket-wp-importer'),
-                ['address1', 'address line one', 'address 1', 'street', 'street address'], []),
-            $make('address_2', __('Address Line 2', 'wicket-wp-importer'),
-                ['address2', 'address line two', 'address 2', 'unit', 'apt'], []),
-            $make('city', __('City', 'wicket-wp-importer'),
-                ['town', 'locality'], []),
-            $make('state', __('State', 'wicket-wp-importer'),
-                ['st', 'state province', 'province', 'region'], [['type' => 'us_state']]),
-            $make('zip', __('ZIP', 'wicket-wp-importer'),
-                ['zip code', 'zip_code', 'postal code', 'postal_code', 'postcode', 'postal'], [['type' => 'zip']]),
-            $make('phone', __('Phone', 'wicket-wp-importer'),
-                ['phone number', 'phone_number', 'telephone', 'tel', 'mobile', 'cell'], [['type' => 'phone']]),
-            $make('fax', __('Fax', 'wicket-wp-importer'),
-                ['fax number', 'fax_number', 'facsimile'], [['type' => 'phone']]),
-            $make('birthdate', __('Birthdate', 'wicket-wp-importer'),
-                ['birth date', 'birth_date', 'dob', 'date of birth', 'birthday', 'birthdate (ymd)'], [['type' => 'date']]),
-            $make('gender', __('Gender', 'wicket-wp-importer'),
-                ['sex'], [['type' => 'enum', 'values' => self::GENDER_VALUES]]),
+            $make(
+                'address_1',
+                __('Address Line 1', 'wicket-wp-importer'),
+                ['address1', 'address line one', 'address 1', 'street', 'street address'],
+                []
+            ),
+            $make(
+                'address_2',
+                __('Address Line 2', 'wicket-wp-importer'),
+                ['address2', 'address line two', 'address 2', 'unit', 'apt'],
+                []
+            ),
+            $make(
+                'city',
+                __('City', 'wicket-wp-importer'),
+                ['town', 'locality'],
+                []
+            ),
+            $make(
+                'state',
+                __('State', 'wicket-wp-importer'),
+                ['st', 'state province', 'province', 'region'],
+                [['type' => 'us_state']]
+            ),
+            $make(
+                'zip',
+                __('ZIP', 'wicket-wp-importer'),
+                ['zip code', 'zip_code', 'postal code', 'postal_code', 'postcode', 'postal'],
+                [['type' => 'zip']]
+            ),
+            $make(
+                'phone',
+                __('Phone', 'wicket-wp-importer'),
+                ['phone number', 'phone_number', 'telephone', 'tel', 'mobile', 'cell'],
+                [['type' => 'phone']]
+            ),
+            $make(
+                'fax',
+                __('Fax', 'wicket-wp-importer'),
+                ['fax number', 'fax_number', 'facsimile'],
+                [['type' => 'phone']]
+            ),
+            $make(
+                'birthdate',
+                __('Birthdate', 'wicket-wp-importer'),
+                ['birth date', 'birth_date', 'dob', 'date of birth', 'birthday', 'birthdate (ymd)'],
+                [['type' => 'date']]
+            ),
+            $make(
+                'gender',
+                __('Gender', 'wicket-wp-importer'),
+                ['sex'],
+                [['type' => 'enum', 'values' => self::GENDER_VALUES]]
+            ),
         ];
     }
 
