@@ -190,7 +190,7 @@ final class ImportPipeline
              * of the same shape. OBA (Task 34) implements the 4-tier email +
              * Bar ID check here. Default = core verdict unchanged.
              *
-             * @param array  $verdict {match:'none'|'exact'|'partial', uuid:?string, existing:?array}
+             * @param array  $verdict {match:'none'|'exact'|'partial', uuid:?string, existing:?array, message:?string}
              * @param array  $rowData Original CSV row.
              * @param string $sessionId
              */
@@ -217,7 +217,10 @@ final class ImportPipeline
                         $existingName = ' (' . $fullName . ')';
                     }
                 }
-                $message = sprintf(
+                // D-OBA-1: an extension (OBA Task 34) may supply a custom
+                // skip reason via $verdict['message']; fall back to the core
+                // default when absent (backward-compatible).
+                $message = $verdict['message'] ?? sprintf(
                     'Email %s already belongs to a different person%s.',
                     $person['email'] ?? '',
                     $existingName
