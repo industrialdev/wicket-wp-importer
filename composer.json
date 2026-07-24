@@ -5,6 +5,7 @@
   "license": "GPL-2.0-or-later",
   "require": {
     "php": ">=8.2",
+    "automattic/jetpack-autoloader": "^2",
     "estebanforge/hyperfields": "^1"
   },
   "require-dev": {

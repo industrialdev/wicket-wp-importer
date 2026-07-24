@@ -1,5 +1,111 @@
 # Changelog
 
+## [1.4.4] - 2026-07-24
+
+### Added
+- **`LibraryBootstrap::VERSION` constant + version-aware shadow predicate.** Closes the `method_exists` blind spot a peer review (Claude Opus) flagged: `method_exists` only catches *absent* methods, not a method present in both versions but with changed behavior. `hyperfields_is_class_shadowed()` now also treats a loaded class whose `VERSION` is older than 1.4.1 (when `resolveContentUrl()`'s stable contract was introduced) as shadowed — catching behavioral drift, not just absence. Classes without the stamp (pre-1.4.4, test stubs) skip the version check and fall through to `method_exists`. Uses `ReflectionClass::hasConstant()` (not `getConstant()` directly) to avoid the PHP 8.5 deprecation for non-existent constants.
+
+### Fixed
+- Companion doc mirrors: the "consumers must directly require `automattic/jetpack-autoloader`" guidance (the non-obvious gate that caused the OBA outage) now also lives in `estebanforge/hyperblocks` and `estebanforge/hyperpress-core` docs, not only HyperFields'.
+
+### Notes
+- `LibraryBootstrap::VERSION` must track the library release version on future bumps (the `version-bump.sh` script does not yet update it).
+
+## [1.4.3] - 2026-07-24
+
+### Fixed
+- **Class-shadowing guard extended to the shared procedural wrapper `hyperfields_resolve_content_url()` (in `includes/helpers.php`)** — the chokepoint sibling libraries actually call. 1.4.2 guarded only HyperFields' own bootstrap init call; sibling paths were still vulnerable: HyperPress-Core's bootstrap (`function_exists('hyperfields_resolve_content_url') ? hyperfields_resolve_content_url(...)`) and HyperBlocks' `hyperblocks_resolve_content_url()` both delegate to this wrapper, so a stale bundled `LibraryBootstrap` (< 1.4.1) lacking `resolveContentUrl()` would still fatal through them. The wrapper now runs the same shadow predicate and returns `''` (siblings already treat `''` as the "bail" signal) instead of calling the absent method. The class FQCN is injectable for testing.
+
+### Added
+- `tests/Unit/ResolvePluginUrlTest.php`: two regression tests for the wrapper path (`testWrapperDelegatesToFreshClass`, `testWrapperBailsOnStaleClassInsteadOfFataling`). Removing the wrapper guard makes the stale test fatal.
+
+### Notes
+- 1.4.2 (the bootstrap-path guard) remains a strict improvement and is safe; 1.4.3 closes the sibling-wrapper hole identified in peer review. Together they cover both external call sites of `LibraryBootstrap::resolveContentUrl()`.
+
+## [1.4.2] - 2026-07-24
+
+### Fixed
+- **Class-shadowing fatal eliminated: a stale bundled `HyperFields\LibraryBootstrap` lacking `resolveContentUrl()` (added in 1.4.1) no longer crashes the request when a newer init wins the multi-instance version election.** The election guarantees the newest *init* runs but cannot guarantee the newest *class* is loaded — PHP's autoloader stack may resolve the class from an older bundled copy. Previously the newest init then called a method absent on the stale class and the process fatal'd (`Call to undefined method ... resolveContentUrl()`). The call is now guarded: when the shadow signature is detected (class loaded, method absent) the resolver emits a diagnosable `error_log` alarm and falls back to `plugins_url()` instead of crashing. This is the direct fix for the OBA staging outage class of failure.
+
+### Added
+- `hyperfields_resolve_plugin_url(string $plugin_dir, string $plugin_file_path, string $plugin_version, string $class = 'HyperFields\LibraryBootstrap', ?callable $alarm = null): string` — extracts the library URL resolution (formerly inline in `hyperfields_run_initialization_logic()`) into a testable function with the class FQCN and alarm callable injectable.
+- `hyperfields_is_class_shadowed(string $class): bool` — pure predicate returning true iff the LibraryBootstrap class is loaded but lacks `resolveContentUrl()`. The alarm trigger logic, unit-testable without `error_log` capture.
+- `tests/Unit/ResolvePluginUrlTest.php` — four regression tests pinning the guard: fresh class delegates, stale class falls back + alarms with the correct message, missing class falls back silently, and the predicate detects the stale shape. Removing the guard makes the stale test fatal.
+
+### Notes
+- This guard is a safety net, not the root-cause fix. The root cause is that consumers (e.g. `wicket-wp-account-centre`, `wicket-wp-importer`) pull `automattic/jetpack-autoloader` only transitively via `hyperfields → jetpack`, so Jetpack never adopts them and stays inert. Consumers must *directly* require `automattic/jetpack-autoloader` for Jetpack to generate its manifest and own class identity. See `docs/library-bootstrap.md`.
+
+## [1.4.1] - 2026-07-23
+
+### Fixed
+- **Vendored HyperFields no longer produces a 404ing asset URL, fixing admin/options-page assets and field JS (multiselect-enhanced.js) that silently failed to load when the library was installed outside `WP_PLUGIN_DIR`.** The library URL constant `HYPERFIELDS_PLUGIN_URL` was computed with `plugins_url('', $plugin_file_path)` (in `bootstrap.php` and `LibraryBootstrap::resolve_plugin_url()`). That function resolves correctly only when the file sits directly under `WP_PLUGIN_DIR`: it calls `plugin_basename()`, which strips that one prefix and nothing else. When HyperFields is loaded from anywhere else, `plugin_basename()` returns the full filesystem path with its leading slash stripped, and `plugins_url()` glues it to `WP_PLUGIN_URL`, emitting a URL like `https://host/app/plugins/home/.../src/vendor/estebanforge/hyperfields/` that 404s. Assets enqueued from that URL never load, silently breaking options pages and field enhancements. This hit real Bedrock deployments where the app's root `composer.json` pulls a plugin that requires `estebanforge/hyperblocks` (which itself requires `estebanforge/hyperfields`) into `public_html/src/vendor` (outside the `src/web` document root), and that root copy won HyperFields' multi-instance highest-version election, so its (unreachable) assets were the ones enqueued. The new resolver matches the library directory against every web-accessible WordPress content root (`WP_PLUGIN_DIR`/`WP_PLUGIN_URL`, `WPMU_PLUGIN_DIR`/`WPMU_PLUGIN_URL`, `WP_CONTENT_DIR`/`WP_CONTENT_URL`, and the active theme template + stylesheet dirs) on a directory boundary, with `realpath` canonicalization so symlinked plugin dirs (wp-env, Lando, some Bedrock setups) still match. Returns the correct public URL, or an empty string when the path is genuinely not HTTP-reachable.
+- **`HYPERPRESS_PLUGIN_URL` no longer inherits a broken HyperFields value.** `LibraryBootstrap::init()` previously defined `HYPERPRESS_PLUGIN_URL` by copying `HYPERFIELDS_PLUGIN_URL`. When HyperFields' URL was the 404ing value above, that pollution silently broke HyperPress-Core's frontend script enqueue too. HyperFields no longer defines `HYPERPRESS_PLUGIN_URL` at all. HyperPress-Core owns that constant and resolves it from its own base directory (HyperPress vendors HyperFields, so it may live at a different path). A naive "resolve independently from HyperFields' $base_dir" was considered but rejected: that $base_dir is HyperFields' dir, not HyperPress-Core's, so it would still produce the wrong URL. Removing the fallback lets HyperPress-Core's own (correct) bootstrap win.
+
+### Added
+- `LibraryBootstrap::resolveContentUrl(string $path): string` public static method — the canonical content-aware URL resolver shared across the HyperFields / HyperBlocks / HyperPress-Core library family. Matches an absolute filesystem path against web-accessible WordPress content roots with directory-boundary prefix matching and `realpath` canonicalization; returns `''` when no root contains the path.
+- `hyperfields_resolve_content_url(string $path): string` procedural wrapper in `includes/helpers.php`, exposed so sibling libraries (HyperBlocks, HyperPress-Core) delegate to this single implementation when HyperFields is present rather than carrying their own copy.
+- `tests/Unit/ResolveContentUrlTest.php` covering nested plugin-vendor resolution, exact-root match, the shared-prefix boundary guard, the Bedrock-root-vendor (non-web-accessible) empty case, and backslash normalization.
+- `WP_PLUGIN_URL`/`WP_CONTENT_URL` constants in the test bootstrap so the resolver's production code path is exercised (previously only `WP_*_DIR` was defined, so the URL pairs were skipped and the resolver could not be tested meaningfully).
+
+## [1.4.0] - 2026-07-16
+
+### Changed
+- **Admin CSS realigned with current WordPress checkbox/heading UI** — three scoping fixes in `assets/css/hyperfields-admin.css`, all in service of matching recent WP core rendering rather than fighting it:
+  - Section headings now use the admin text-color token (`var(--hf-color-admin-text)`) instead of the generic frontend text token (`var(--hf-color-text)`), so headings match the surrounding WP admin chrome.
+  - Removed the fixed `width: 18px` / `height: 18px` on `.hyperpress-field-input-wrapper input[type="checkbox"]` and `[type="radio"]`. WordPress 6.9+/7.x renders checkboxes via `appearance: none` with an internally-positioned checkmark; forcing a fixed size distorted that internal positioning and produced an off-center check, especially on mobile. Width/height is now left unset so WP core owns the checkbox appearance; `cursor: pointer` is retained.
+  - Scoped the `.hyperpress-heading-label` rule to `.hyperpress-options-wrap .hyperpress-heading-label`, preventing it from leaking out and overriding unrelated heading markup on pages that share the class name.
+
+## [1.3.5] - 2026-07-07
+
+### Fixed
+- **Empty image-field preview rendered as a tiny white box** — the PHP image-field templates always emitted the `.hyperpress-image-preview` shell (padding + white background + border) but only placed an `<img>` inside when a value existed. With no selection the styled shell collapsed to a small empty square. Both rendering paths now show an empty-state placeholder.
+  - `src/templates/field-image.php` (primary path resolved by `TemplateLoader::getTemplateFile()`) and `src/templates/field-input.php` (legacy `image` switch case, reachable via the `hyperfields/template` filter) now render `<span class="hyperpress-image-placeholder">No image selected</span>` and add an `is-empty` class to the preview div when `$value` is empty.
+  - `assets/js/media-fields.js` keeps the placeholder in sync: `updateSinglePreview()` drops `is-empty` when an image is chosen; `clearSingle()` restores the placeholder span + `is-empty` class instead of leaving an empty hidden div (image branch only; file branch unchanged).
+  - New `.hyperpress-image-preview.is-empty` CSS rule renders a 150×150 dashed-border box with muted placeholder text, matching the populated dimensions so selecting/removing causes no layout shift.
+  - `'noImage' => __('No image selected', 'api-for-htmx')` added to the admin `hyperpressFields.l10n` array in `TemplateLoader::enqueueAssets()` so the JS-restored placeholder is translatable.
+- **VIP/WPCS `EscapeOutput` compliance for the `is-empty` class output** — both template `echo` sites now wrap the class literal in `esc_attr()` as defense-in-depth, even though the output is a hardcoded literal.
+
+## [1.3.4] - 2026-07-07
+
+### Added
+- **`wp.media` handler for image, file, and `media_gallery` fields** — the PHP field templates emitted `.hyperpress-upload-button` / `.hyperpress-remove-button` markup but no JavaScript existed to open the media frame. Only the React path (`react-fields.js` / `ImageField.jsx`) had a working picker; consumers on the plain PHP-template path got dead buttons. New dedicated `assets/js/media-fields.js` (ES6 `class HyperFieldsMedia`, singleton-scoped, event-delegated):
+  - Single-select frame for `image` (stores attachment ID) and `file` (stores URL), with live preview updates and remove-button visibility toggling.
+  - Multi-select frame for `media_gallery` (stores comma-joined IDs), with per-item thumbnail fetch via `wp.media.attachment().fetch()` and per-item removal.
+  - Reads the existing `hyperpressFields.l10n` strings; no new localization surface.
+  - Degrades gracefully: returns early when `wp.media` is undefined.
+- **`wp_enqueue_media()` call in `TemplateLoader::enqueueAssets()`** for admin pages, so the core media scripts load alongside the new handler. Guarded with `function_exists()` (progressive enhancement; the hidden input still submits its value without it).
+
+### Fixed
+- **Double-enqueue of `conditional-fields.js`** — `Assets::enqueueScripts()` registered the script under handle `hyperfields-conditional-fields` while `TemplateLoader::enqueueAssets()` used `hyperpress-conditional-fields`. Same file, two handles, so the script (and its `hyperpressFields` localization) loaded twice on every admin page. Removed the redundant enqueue from `Assets.php`; `TemplateLoader` is now the single source.
+- **Flat-layout fields rendered unstyled** — field templates use two layouts: grid-row (number/text/checkbox/textarea/select) and flat (radio/image/file/separator/heading/html). The flat layout emitted classes with zero CSS rules, so radio groups, image pickers, separators, and headings rendered as raw, unstyled HTML. A `:has(> .hyperpress-field-label)` rule now aligns flat fields to the same 220px label/input grid as the grid-row fields (scoped to flat fields only). Native WP-style rules added for `.hyperpress-radio-vertical`/`-horizontal`, `.hyperpress-image-field`/`-file-field`/`-media-gallery-field` (CSS grid: buttons side by side on row 1, preview wraps below and hugs the image), `.hyperpress-separator`, `.hyperpress-heading-wrapper`, `.hyperpress-html-content`. Mobile: flat fields collapse to a single column under 782px, matching the existing grid-row collapse.
+
+### Docs
+- **Jetpack Autoloader guidance** in `docs/library-bootstrap.md`. Host plugins using `automattic/jetpack-autoloader` must explicitly `require_once` the bootstrap file and call `hyperfields_run_initialization_logic()`, because the Jetpack Autoloader skips Composer autoload `files` entries. Without it, `HYPERFIELDS_PLUGIN_URL` is never defined, `TemplateLoader::enqueueAssets()` bails at its empty-URL guard, and the options page renders with zero styling.
+
+## [1.3.2] - 2026-07-06
+
+### Added
+- **Numeric range enforcement for `number` fields** — revived the dead `Field::$min`/`$max` properties (widened `?int` → `?float`) and wired them end-to-end. `setMin(1.0)->setMax(7.0)->setStep(0.1)` now (a) renders `min`/`max`/`step` as HTML attributes on the input, (b) **clamps the sanitized value server-side** to `[min, max]` so saves can never persist out-of-range data, and (c) reports correct numeric validity via `validateValue()`. Out-of-range values are coerced, never rejected, so the save flow cannot fail on range alone. This is a strict improvement on Carbon Fields, which only emits the HTML attributes and trusts the browser.
+- **Type-aware `setValidation(['min'..'max'])`** — for `number` fields, `min`/`max` are now numeric bounds; for string fields they stay string-length bounds (backward compatible). Removes the dual-meaning confusion that made `min`/`max` unsafe for numbers.
+
+### Fixed
+- **Container save path bypassed validation** — `PostMetaContainer`, `TermMetaContainer`, and `UserMetaContainer` called `sanitizeValue()` but never `validateValue()`, so `wps_validate` and `setValidation` rules were silently ignored for post/term/user meta. Each save loop now runs validation and skips fields that fail (existing meta preserved). Numeric range never triggers a skip because the sanitizer clamps first.
+- **`ReactField::getMin`/`getMax` LSP break** — signatures widened from `?int` to `?float` to match the parent after the `Field` property change. (Note: the bodies still read `toArray()['min']`, which never exists — pre-existing dead code that always returns `null`; the parent getters now take precedence via the property. Tracked for a separate cleanup.)
+
+### Tests
+- `FieldTest::testNumberRangeClampAndAttributes` — covers clamp behavior (below-min, above-max, in-range, non-numeric), float getters, `step` independence, HTML attribute injection into `toArray()`, user-attribute precedence, and non-number field isolation.
+- `FieldTest::testValidationRulesAreTypeAware` — covers numeric `min`/`max` for `number` vs string-length `min`/`max` for `text`.
+- `UserMetaContainerTest::testSaveWrapper` — updated to mock the new `validateValue()` save contract.
+
+## [1.3.1] - 2026-07-06
+
+### Added
+- **Semantic save action on `OptionsPage`** — re-emits WP's Settings-API save as `hyperfields/options_page/after_save` so consumers hook intent, not raw `update_option_{$name}` plumbing. Gated on `$old !== $new`, so `after_save` fires exactly once per real value change, not on every form submit. Argument order is `(new, old, page)` (intentional reversal of WP's `(old, new, option)`) to match "the current state after save" intent. Mirrors Carbon Fields' `theme_options_container_saved` surface for migration-friendliness.
+- **`hyperfields/options_page/pre_save` filter** — let third parties alter sanitized values before WP writes them. Receives `(output, pre_save_snapshot, OptionsPage_instance)`. Filter consumers must treat the `OptionsPage` argument as read-only; mutating it mid-sanitize (e.g. re-calling `registerSettings()`) has undefined behavior.
+
+### Tests
+- `OptionsPageTest` covers `onOptionSaved` no-op gating (identical `$old`/`$new` does not fire `after_save`), the `(new, old, page)` arg order, and the `pre_save` filter seam being applied during sanitize.
+
 ## [1.3.0] - 2026-07-03
 
 ### Added

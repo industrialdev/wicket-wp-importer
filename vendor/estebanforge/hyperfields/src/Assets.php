@@ -27,17 +27,14 @@ class Assets
      */
     public function enqueueScripts(): void
     {
-        if (!defined('HYPERFIELDS_PLUGIN_URL')) {
+        if (!defined('HYPERFIELDS_PLUGIN_URL') || HYPERFIELDS_PLUGIN_URL === '') {
             return;
         }
 
-        wp_enqueue_script(
-            'hyperfields-conditional-fields',
-            HYPERFIELDS_PLUGIN_URL . 'assets/js/conditional-fields.js',
-            [],
-            HYPERFIELDS_VERSION,
-            true
-        );
+        // The base conditional-fields.js is enqueued by TemplateLoader with the
+        // hyperpressFields l10n object. Do not re-enqueue it here under a
+        // different handle — that caused the script to load twice on admin
+        // pages with different IDs.
 
         // Only enqueue enhanced multiselect JS if we have enhanced multiselects on the page
         global $pagenow;
