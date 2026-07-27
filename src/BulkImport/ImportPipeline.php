@@ -17,7 +17,7 @@ use WicketImporter\WicketImporter as Plugin;
  *
  * Owns the session-level lifecycle that turns staged rows into MDP people +
  * memberships. Cheque renewal does NOT use this class; it has its own
- * Cheque\BatchProcessor (Phase 4-5) because it needs Action Scheduler chunking.
+ * WicketCheque\BatchProcessor (Phase 4-5) because it needs Action Scheduler chunking.
  *
  * Phases:
  *   1. runValidation($sessionId)    Re-run the validation pipeline over every

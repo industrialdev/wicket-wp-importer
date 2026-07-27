@@ -16,6 +16,7 @@ class ComposerStaticInita771d0f24e42cb7006d182ed849ee8a4
         'W' =>
         array (
             'WicketImporter\\' => 15,
+            'WicketCheque\\' => 13,
         ),
         'H' =>
         array (
@@ -31,6 +32,10 @@ class ComposerStaticInita771d0f24e42cb7006d182ed849ee8a4
         'WicketImporter\\' =>
         array (
             0 => __DIR__ . '/../..' . '/src',
+        ),
+        'WicketCheque\\' =>
+        array (
+            0 => __DIR__ . '/../..' . '/src/Cheque',
         ),
         'HyperFields\\' =>
         array (
@@ -102,8 +107,15 @@ class ComposerStaticInita771d0f24e42cb7006d182ed849ee8a4
         'HyperFields\\Transfer\\SchemaConfig' => __DIR__ . '/..' . '/estebanforge/hyperfields/src/Transfer/SchemaConfig.php',
         'HyperFields\\UserField' => __DIR__ . '/..' . '/estebanforge/hyperfields/src/UserField.php',
         'HyperFields\\Validation\\SchemaValidator' => __DIR__ . '/..' . '/estebanforge/hyperfields/src/Validation/SchemaValidator.php',
+        'WicketCheque\\BundleRenewalSubscriber' => __DIR__ . '/../..' . '/src/Cheque/BundleRenewalSubscriber.php',
+        'WicketCheque\\MappingResolver' => __DIR__ . '/../..' . '/src/Cheque/MappingResolver.php',
+        'WicketCheque\\ProductResolver' => __DIR__ . '/../..' . '/src/Cheque/ProductResolver.php',
+        'WicketCheque\\ResolvedProducts' => __DIR__ . '/../..' . '/src/Cheque/ResolvedProducts.php',
+        'WicketCheque\\SectionResolver' => __DIR__ . '/../..' . '/src/Cheque/SectionResolver.php',
+        'WicketCheque\\SubscriptionCreator' => __DIR__ . '/../..' . '/src/Cheque/SubscriptionCreator.php',
+        'WicketCheque\\SubscriptionResult' => __DIR__ . '/../..' . '/src/Cheque/SubscriptionResult.php',
+        'WicketCheque\\TierResolver' => __DIR__ . '/../..' . '/src/Cheque/TierResolver.php',
         'WicketImporter\\Admin\\ImportAdminPage' => __DIR__ . '/../..' . '/src/Admin/ImportAdminPage.php',
-        'WicketImporter\\Admin\\MappingSettingsPage' => __DIR__ . '/../..' . '/src/Admin/MappingSettingsPage.php',
         'WicketImporter\\Assets' => __DIR__ . '/../..' . '/src/Assets.php',
         'WicketImporter\\BulkImport\\Database\\DbInstaller' => __DIR__ . '/../..' . '/src/BulkImport/Database/DbInstaller.php',
         'WicketImporter\\BulkImport\\Database\\ImportStagingTable' => __DIR__ . '/../..' . '/src/BulkImport/Database/ImportStagingTable.php',

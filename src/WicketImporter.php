@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace WicketImporter;
 
+use WicketCheque\BundleRenewalSubscriber;
 use WicketImporter\BulkImport\Database\ImportStagingTable;
 
 /**
@@ -83,8 +84,11 @@ final class WicketImporter
         new BulkImport\Rest\UploadController();
         new Mapping\MappingSettings();
 
-        // TODO Phase 1: ImportPipeline
-        // TODO Phase 4: Cheque\BatchProcessor, Cheque\Rest\ProcessController
+        // Phase 4: Lockbox answers the bundle-renewal filters fired by
+        // wicket-wp-memberships (decision D-LOCKBOX-2, PULL architecture).
+        new BundleRenewalSubscriber($logger);
+
+        // TODO Phase 4: WicketCheque\BatchProcessor, WicketCheque\Rest\ProcessController
     }
 
     /**

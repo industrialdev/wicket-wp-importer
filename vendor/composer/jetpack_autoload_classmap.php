@@ -294,13 +294,41 @@ return array(
 		'version' => '2.12.0',
 		'path'    => $vendorDir . '/automattic/jetpack-autoloader/src/class-version-selector.php'
 	),
+	'WicketCheque\\BundleRenewalSubscriber' => array(
+		'version' => 'dev-main',
+		'path'    => $baseDir . '/src/Cheque/BundleRenewalSubscriber.php'
+	),
+	'WicketCheque\\MappingResolver' => array(
+		'version' => 'dev-main',
+		'path'    => $baseDir . '/src/Cheque/MappingResolver.php'
+	),
+	'WicketCheque\\ProductResolver' => array(
+		'version' => 'dev-main',
+		'path'    => $baseDir . '/src/Cheque/ProductResolver.php'
+	),
+	'WicketCheque\\ResolvedProducts' => array(
+		'version' => 'dev-main',
+		'path'    => $baseDir . '/src/Cheque/ResolvedProducts.php'
+	),
+	'WicketCheque\\SectionResolver' => array(
+		'version' => 'dev-main',
+		'path'    => $baseDir . '/src/Cheque/SectionResolver.php'
+	),
+	'WicketCheque\\SubscriptionCreator' => array(
+		'version' => 'dev-main',
+		'path'    => $baseDir . '/src/Cheque/SubscriptionCreator.php'
+	),
+	'WicketCheque\\SubscriptionResult' => array(
+		'version' => 'dev-main',
+		'path'    => $baseDir . '/src/Cheque/SubscriptionResult.php'
+	),
+	'WicketCheque\\TierResolver' => array(
+		'version' => 'dev-main',
+		'path'    => $baseDir . '/src/Cheque/TierResolver.php'
+	),
 	'WicketImporter\\Admin\\ImportAdminPage' => array(
 		'version' => 'dev-main',
 		'path'    => $baseDir . '/src/Admin/ImportAdminPage.php'
-	),
-	'WicketImporter\\Admin\\MappingSettingsPage' => array(
-		'version' => 'dev-main',
-		'path'    => $baseDir . '/src/Admin/MappingSettingsPage.php'
 	),
 	'WicketImporter\\Assets' => array(
 		'version' => 'dev-main',

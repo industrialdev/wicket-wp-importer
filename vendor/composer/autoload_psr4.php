@@ -7,6 +7,7 @@ $baseDir = dirname($vendorDir);
 
 return array(
     'WicketImporter\\' => array($baseDir . '/src'),
+    'WicketCheque\\' => array($baseDir . '/src/Cheque'),
     'HyperFields\\' => array($vendorDir . '/estebanforge/hyperfields/src'),
     'Automattic\\Jetpack\\Autoloader\\' => array($vendorDir . '/automattic/jetpack-autoloader/src'),
 );

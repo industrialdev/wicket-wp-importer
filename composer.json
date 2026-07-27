@@ -13,7 +13,8 @@
   },
   "autoload": {
     "psr-4": {
-      "WicketImporter\\": "src/"
+      "WicketImporter\\": "src/",
+      "WicketCheque\\": "src/Cheque/"
     }
   },
   "scripts": {
