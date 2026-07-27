@@ -36,9 +36,17 @@ final class ColumnDefinition
      */
     public function acceptedHeaders(): array
     {
+        // P4: mapHeaders() calls this once per (header x column) cell and the
+        // candidate set is immutable per instance — memoize by object id.
+        static $cache = [];
+        $oid = spl_object_id($this);
+        if (isset($cache[$oid])) {
+            return $cache[$oid];
+        }
+
         $candidates = array_merge([$this->key, $this->label], $this->aliases);
 
-        return array_values(array_unique(array_map([self::class, 'normalize'], $candidates)));
+        return $cache[$oid] = array_values(array_unique(array_map([self::class, 'normalize'], $candidates)));
     }
 
     /**

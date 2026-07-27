@@ -113,7 +113,7 @@ class ImportStagingTable
                 if ($sub_ids !== null) {
                     $values[] = $sub_ids;
                 }
-                $values[] = current_time('mysql');
+                $values[] = $this->utcNowMysql();
             }
 
             $query = "INSERT INTO {$this->table_name}
@@ -158,7 +158,7 @@ class ImportStagingTable
 
     /**
      * Get rows in a session that passed validation AND are still pending
-     * import: validation_status = 'valid' AND import_status = 'pending'.
+     * import: validation_status IN ('valid', 'warning') AND import_status = 'pending'.
      *
      * This is the canonical "ready to import" set. The pending filter is
      * load-bearing for re-run safety (Task 12.3 / 12.4): a re-run of the
@@ -177,7 +177,7 @@ class ImportStagingTable
         global $wpdb;
         $rows = $wpdb->get_results(
             $wpdb->prepare(
-                "SELECT * FROM {$this->table_name} WHERE session_id = %s AND validation_status = 'valid' AND import_status = 'pending' ORDER BY row_index ASC",
+                "SELECT * FROM {$this->table_name} WHERE session_id = %s AND validation_status IN ('valid', 'warning') AND import_status = 'pending' ORDER BY row_index ASC",
                 $session_id
             ),
             ARRAY_A
@@ -188,7 +188,7 @@ class ImportStagingTable
 
     /**
      * Get rows in a session that the destructive import phase will actually
-     * process: validation_status = 'valid' AND import_status = 'pending'.
+     * process: validation_status IN ('valid', 'warning') AND import_status = 'pending'.
      *
      * Distinct from getValidBySession() (which only filters on validation_status).
      * Required for Task 12.4 so a re-run of runImport skips rows that already
@@ -202,7 +202,7 @@ class ImportStagingTable
         global $wpdb;
         $rows = $wpdb->get_results(
             $wpdb->prepare(
-                "SELECT * FROM {$this->table_name} WHERE session_id = %s AND validation_status = 'valid' AND import_status = 'pending' ORDER BY row_index ASC",
+                "SELECT * FROM {$this->table_name} WHERE session_id = %s AND validation_status IN ('valid', 'warning') AND import_status = 'pending' ORDER BY row_index ASC",
                 $session_id
             ),
             ARRAY_A
@@ -228,17 +228,20 @@ class ImportStagingTable
      *
      * @return int Affected-row count.
      */
-    public function claimImportableInSession(string $session_id): int
+    public function claimImportableInSession(string $session_id): int|false
     {
         global $wpdb;
         $affected = $wpdb->query(
             $wpdb->prepare(
-                "UPDATE {$this->table_name} SET import_status = 'processing' WHERE session_id = %s AND validation_status = 'valid' AND import_status = 'pending'",
+                "UPDATE {$this->table_name} SET import_status = 'processing' WHERE session_id = %s AND validation_status IN ('valid', 'warning') AND import_status = 'pending'",
                 $session_id
             )
         );
 
-        return is_int($affected) ? $affected : 0;
+        // B7: $wpdb->query() returns false on failure. Surface it (int|false)
+        // so runImport can 500 instead of masking a DB error as "0 claimed"
+        // (which reads as "a concurrent run won" and returns an empty 200).
+        return is_int($affected) ? $affected : false;
     }
 
     /**
@@ -291,7 +294,7 @@ class ImportStagingTable
             [
                 'import_status' => $import_status,
                 'import_message' => $import_message,
-                'processed_at' => current_time('mysql'),
+                'processed_at' => $this->utcNowMysql(),
             ],
             ['id' => $id]
         );
@@ -400,8 +403,14 @@ class ImportStagingTable
      * the filterable wicket_import_session_ttl_hours (default 24h).
      *
      * Only 'pending' rows are expired: a row in 'processing' may belong to
-     * an in-flight /run, and terminal statuses (imported/failed/etc.) are
-     * already settled. Expired rows keep their raw_data for audit/export.
+     * an in-flight /run (reclaimed separately by expireStaleClaims()), and
+     * terminal statuses are already settled. Expired rows keep their raw_data
+     * for audit/export.
+     *
+     * B1: created_at is stored UTC (utcNowMysql) and the cutoff is computed
+     * UTC via the base plugin's wicket_time_get_utc_datetime helper, so the
+     * comparison is UTC-vs-UTC (a site-local store vs DB NOW() would drift by
+     * the UTC offset).
      *
      * @param int $ttlHours Max age in hours before a pending row is expired.
      * @return int Number of rows marked expired.
@@ -413,14 +422,76 @@ class ImportStagingTable
 
         $affected = $wpdb->query(
             $wpdb->prepare(
-                "UPDATE {$this->table_name} SET import_status = 'expired', import_message = %s, processed_at = %s WHERE import_status = 'pending' AND created_at < (NOW() - INTERVAL %d HOUR)",
+                "UPDATE {$this->table_name} SET import_status = 'expired', import_message = %s, processed_at = %s WHERE import_status = 'pending' AND created_at < %s",
                 sprintf('Session expired (auto, >%dh inactive)', $ttlHours),
-                current_time('mysql'),
-                $ttlHours
+                $this->utcNowMysql(),
+                $this->staleCutoffUtc($ttlHours)
             )
         );
 
         return is_int($affected) ? $affected : 0;
+    }
+
+    /**
+     * Reclaim rows stuck in 'processing' after an interrupted run (C5).
+     *
+     * claimImportableInSession() transitions pending -> processing; the row
+     * loop then moves each to a terminal status as it finishes. A fatal/OOM
+     * mid-loop leaves rows permanently 'processing': isSessionRunning() then
+     * returns 409 forever, the TTL cron skips them (it targets 'pending'),
+     * and getImportSummary() has no bucket for them.
+     *
+     * A legitimate /run completes in seconds-to-minutes; if the hourly cron
+     * still sees 'processing' rows, the run that claimed them is dead. Reclaim
+     * them to 'needs_review' (NOT 'pending') because we cannot tell whether
+     * ImportAdapter::create() already ran for the row — re-running could mint
+     * a duplicate membership. Needs-review forces a human check. No time
+     * comparison is needed (hence no timezone concern): presence of
+     * 'processing' at cron time is itself the signal.
+     *
+     * @return int Number of rows reclaimed.
+     */
+    public function expireStaleClaims(): int
+    {
+        global $wpdb;
+
+        $affected = $wpdb->query(
+            $wpdb->prepare(
+                "UPDATE {$this->table_name} SET import_status = 'needs_review', import_message = %s, processed_at = %s WHERE import_status = 'processing'",
+                'Reclaimed after an interrupted run.',
+                $this->utcNowMysql()
+            )
+        );
+
+        return is_int($affected) ? $affected : 0;
+    }
+
+    /**
+     * Current time as a UTC 'Y-m-d H:i:s' string. Reuses the base plugin's
+     * wicket_time_get_utc_datetime helper (AD15 rung 1); falls back to gmdate
+     * when the helper is not loaded (e.g. the unit suite).
+     */
+    private function utcNowMysql(): string
+    {
+        if (function_exists('wicket_time_get_utc_datetime')) {
+            return wicket_time_get_utc_datetime('now')->format('Y-m-d H:i:s');
+        }
+
+        return gmdate('Y-m-d H:i:s');
+    }
+
+    /**
+     * A UTC 'Y-m-d H:i:s' cutoff for "now minus N hours". Used by
+     * expireStaleSessions() against the UTC-stored created_at.
+     */
+    private function staleCutoffUtc(int $ttlHours): string
+    {
+        $ttlHours = max(1, $ttlHours);
+        if (function_exists('wicket_time_get_utc_datetime')) {
+            return wicket_time_get_utc_datetime('now')->modify("-{$ttlHours} hours")->format('Y-m-d H:i:s');
+        }
+
+        return gmdate('Y-m-d H:i:s', time() - $ttlHours * 3600);
     }
 
     /**
@@ -440,7 +511,7 @@ class ImportStagingTable
 
     /**
      * Count rows in a session that the import phase would actually process:
-     * validation_status = 'valid' AND import_status = 'pending'.
+     * validation_status IN ('valid', 'warning') AND import_status = 'pending'.
      *
      * This is the precise pre-flight count for ImportPipeline::runImport's inline
      * cap. countPendingInSession() over-counts because it includes rows that
@@ -452,7 +523,7 @@ class ImportStagingTable
 
         return (int) $wpdb->get_var(
             $wpdb->prepare(
-                "SELECT COUNT(*) FROM {$this->table_name} WHERE session_id = %s AND validation_status = 'valid' AND import_status = 'pending'",
+                "SELECT COUNT(*) FROM {$this->table_name} WHERE session_id = %s AND validation_status IN ('valid', 'warning') AND import_status = 'pending'",
                 $session_id
             )
         );
@@ -516,6 +587,7 @@ class ImportStagingTable
             'phase2_complete'         => 0,
             'needs_review'            => 0,
             'expired'                 => 0,
+            'processing'              => 0,
         ];
 
         foreach ($results as $row) {

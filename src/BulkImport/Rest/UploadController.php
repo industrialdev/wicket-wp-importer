@@ -158,16 +158,21 @@ final class UploadController
             return $this->error('import_upload_failed', __('The upload failed.', 'wicket-wp-importer'), 400);
         }
 
+        // S1: gate the extension on the SUBMITTED name BEFORE wp_handle_upload
+        // moves the file into the web-accessible uploads dir. test_type stays
+        // false (CSV has no magic bytes: finfo returns text/plain, so WP's mime
+        // map would reject valid CSVs) — the extension is the only reliable
+        // signal, so check it before the file lands on disk, not after.
+        $originalName = (string) ($file['name'] ?? '');
+        if (strtolower((string) pathinfo($originalName, PATHINFO_EXTENSION)) !== 'csv') {
+            return $this->error('import_bad_type', __('Only .csv files are accepted.', 'wicket-wp-importer'), 415);
+        }
+
         // wp_handle_upload lives in wp-admin/includes/file.php (not always loaded in REST).
         if (!function_exists('wp_handle_upload')) {
             require_once ABSPATH . 'wp-admin/includes/file.php';
         }
 
-        // Canonical uploader: streams the file into the uploads dir with a unique
-        // sanitized name. test_type is disabled because CSV has no magic bytes:
-        // finfo returns 'text/plain', so WP's mime map rejects valid CSVs (false
-        // 415). The type gate is the extension check below, the only reliable
-        // signal for plain-text files.
         $upload = wp_handle_upload($file, [
             'test_form' => false,
             'test_type' => false,
@@ -178,15 +183,6 @@ final class UploadController
         }
 
         $path = $upload['file'];
-
-        // Type gate: only .csv is accepted -> 415 otherwise.
-        if (strtolower((string) pathinfo($path, PATHINFO_EXTENSION)) !== 'csv') {
-            if (file_exists($path)) {
-                @unlink($path);
-            }
-
-            return $this->error('import_bad_type', __('Only .csv files are accepted.', 'wicket-wp-importer'), 415);
-        }
 
         try {
             $columns = $this->resolveColumns();
@@ -200,6 +196,22 @@ final class UploadController
                     $parse->error ?? __('CSV parse failed.', 'wicket-wp-importer'),
                     $parse->hasSizeError() ? 413 : 400,
                     ['missing_headers' => $parse->missingHeaders]
+                );
+            }
+
+            // B18: reject an oversized file at UPLOAD, not at /run. Without this
+            // a large CSV stages fully then /run returns 413 forever, and the
+            // staged 'pending' rows keep hasActiveSession() true so every later
+            // upload is rejected with 409 until someone finds the DELETE endpoint.
+            if (count($parse->rows) > WICKET_IMPORT_INLINE_MAX_ROWS) {
+                return $this->error(
+                    'import_too_many_rows',
+                    sprintf(
+                        __('This file has %1$d rows; the importer accepts up to %2$d per batch. Split the file and upload again.', 'wicket-wp-importer'),
+                        count($parse->rows),
+                        WICKET_IMPORT_INLINE_MAX_ROWS
+                    ),
+                    413
                 );
             }
 
@@ -581,7 +593,7 @@ final class UploadController
     private function shapeValidationRow(array $row): array
     {
         return [
-            'line'               => ((int) ($row['row_index'] ?? 0)) + 1,
+            'line'               => ((int) ($row['row_index'] ?? 0)) + 2,
             'data'               => Json::decodeArray($row['raw_data'] ?? null),
             'validation_status'  => (string) ($row['validation_status'] ?? ''),
             'validation_message' => (string) ($row['validation_message'] ?? ''),
@@ -597,7 +609,7 @@ final class UploadController
         $orderId = $row['order_id'] ?? null;
 
         return [
-            'line'               => ((int) ($row['row_index'] ?? 0)) + 1,
+            'line'               => ((int) ($row['row_index'] ?? 0)) + 2,
             'data'               => Json::decodeArray($row['raw_data'] ?? null),
             'validation_status'  => (string) ($row['validation_status'] ?? ''),
             'import_status'      => (string) ($row['import_status'] ?? ''),
@@ -623,7 +635,7 @@ final class UploadController
         $out = [];
         foreach ($rows as $row) {
             $data = Json::decodeArray($row['raw_data'] ?? null);
-            $line = [(string) (((int) ($row['row_index'] ?? 0)) + 1)];
+            $line = [(string) (((int) ($row['row_index'] ?? 0)) + 2)];
 
             foreach ($dataKeys as $key) {
                 $line[] = (string) ($data[$key] ?? '');
@@ -653,7 +665,7 @@ final class UploadController
         $out = [];
         foreach ($rows as $row) {
             $data = Json::decodeArray($row['raw_data'] ?? null);
-            $line = [(string) (((int) ($row['row_index'] ?? 0)) + 1)];
+            $line = [(string) (((int) ($row['row_index'] ?? 0)) + 2)];
 
             foreach ($dataKeys as $key) {
                 $line[] = (string) ($data[$key] ?? '');

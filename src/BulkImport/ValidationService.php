@@ -254,12 +254,27 @@ final class ValidationService
             'enum' => new EnumValidator(),
         ];
 
-        /** @var array<string, ValidatorInterface> $validators */
-        $validators = apply_filters('wicket_import_validators', $defaults, []);
+        // S2: never let a filter disable all validation or introduce a non-
+        // ValidatorInterface entry (which would fatal on ->validate()). Start
+        // from the built-in defaults and accept only well-shaped overrides.
+        $filtered = apply_filters('wicket_import_validators', $defaults, []);
+        $registry = $defaults;
+        if (is_array($filtered)) {
+            foreach ($filtered as $name => $validator) {
+                if (is_string($name) && $validator instanceof ValidatorInterface) {
+                    $registry[$name] = $validator;
+                } else {
+                    $this->log('warning', sprintf(
+                        'Ignoring invalid wicket_import_validators entry "%s" (not a ValidatorInterface).',
+                        is_string($name) ? $name : get_debug_type($validator)
+                    ));
+                }
+            }
+        }
 
-        $this->registry = $validators;
+        $this->registry = $registry;
 
-        return $validators;
+        return $registry;
     }
 
     /**

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace WicketImporter\BulkImport;
 
+use WicketImporter\WicketImporter as Plugin;
 use Wicket_Memberships\Membership_Controller;
 use Wicket_Memberships\Membership_Tier;
 use Wicket_Memberships\Utilities;
@@ -117,9 +118,16 @@ final class ImportAdapter
         $membership_id = $controller->create_local_membership_record($mapping, $wicket_uuid);
         if (is_wp_error($membership_id) || empty($membership_id)) {
             // N1: guard against WP_Error (empty() alone would coerce an error to 1).
-            // D1: persist the MDP UUID into extension_metadata so a pipeline retry
-            // reuses it (create_mdp_record's dedup will then return the same UUID
-            // rather than creating a second MDP membership).
+            // B10/D1: ACTUALLY persist the MDP UUID into extension_metadata so a
+            // pipeline retry reuses it (create_mdp_record's dedup then returns the
+            // same UUID rather than creating a second MDP membership). The comment
+            // previously claimed this write but it was never performed.
+            $staging = Plugin::get_instance()->StagingTable();
+            $staging->updateExtensionMetadata(
+                $data->stagingId,
+                array_merge($staging->getExtensionMetadata($data->stagingId), ['membership_wicket_uuid' => $wicket_uuid])
+            );
+
             return MembershipResult::failed(
                 sprintf('CPT creation failed (MDP membership %s already assigned; retry-safe).', $wicket_uuid)
             );

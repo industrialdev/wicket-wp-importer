@@ -496,7 +496,7 @@ class ImportAdminPage
 				    $flaggedSet = array_flip(Json::decodeArray($row['flagged_fields'] ?? null));
 				    ?>
 					<tr>
-						<th scope="row"><?php echo esc_html((string) ($rowIndex + 1)); ?></th>
+						<th scope="row"><?php echo esc_html((string) ($rowIndex + 2)); ?></th>
 						<?php foreach ($columns as $key) :
 						    $value = $data[$key] ?? '';
 						    $flagged = isset($flaggedSet[$key]);
@@ -600,7 +600,7 @@ class ImportAdminPage
 				    ];
 				    ?>
 					<tr>
-						<th scope="row"><?php echo esc_html((string) ($rowIndex + 1)); ?></th>
+						<th scope="row"><?php echo esc_html((string) ($rowIndex + 2)); ?></th>
 						<td><?php echo esc_html($name); ?></td>
 						<td><?php echo esc_html($email); ?></td>
 						<?php foreach ($extColumns as $col) :
@@ -968,11 +968,13 @@ class ImportAdminPage
         }
 
         // Distinct users who have created at least one batch (for the dropdown).
+        // P6: cap the dropdown (the JOIN+DISTINCT is unbounded otherwise).
         $userRows = $wpdb->get_results(
             "SELECT DISTINCT u.ID, u.display_name
 			 FROM {$usersTable} u
 			 INNER JOIN {$batchesTable} b ON b.created_by_user_id = u.ID
-			 ORDER BY u.display_name ASC"
+			 ORDER BY u.display_name ASC
+			 LIMIT 500"
         );
 
         // Total for pagination.
@@ -1288,13 +1290,17 @@ class ImportAdminPage
      */
     private static function truncateForDisplay(string $s, int $limit): string
     {
-        if (strlen($s) <= $limit) {
+        // B16: byte-based strlen/substr can split a multibyte UTF-8 sequence,
+        // yielding invalid UTF-8 that esc_html()/wp_check_invalid_utf8() then
+        // blanks entirely (the whole Raw-data cell renders empty). Operate on
+        // characters, not bytes.
+        if (mb_strlen($s, 'UTF-8') <= $limit) {
             return $s;
         }
-        $cut = substr($s, 0, $limit);
-        $nl = strrpos($cut, "\n");
+        $cut = mb_substr($s, 0, $limit, 'UTF-8');
+        $nl = mb_strrpos($cut, "\n", 0, 'UTF-8');
         if ($nl !== false && $nl > $limit / 2) {
-            $cut = substr($cut, 0, $nl);
+            $cut = mb_substr($cut, 0, $nl, 'UTF-8');
         }
 
         return $cut . '…';

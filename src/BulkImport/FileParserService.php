@@ -172,6 +172,21 @@ final class FileParserService
             );
         }
 
+        // B14: two headers mapping to the same column -> the later cell silently
+        // wins (possibly an empty one). Reject up front so the admin sees the
+        // collision instead of a confusing wrong-cell import.
+        $matchedKeys = array_values($headerToKey);
+        if (count($matchedKeys) !== count(array_unique($matchedKeys))) {
+            $dupes = array_unique(array_diff_assoc($matchedKeys, array_unique($matchedKeys)));
+
+            return new ParseResult(
+                rows: [],
+                missingHeaders: [],
+                totalCount: 0,
+                error: 'Duplicate CSV header for column: ' . implode(', ', $dupes),
+            );
+        }
+
         $rows = [];
         $rowIndex = 0;
         while (($raw = fgetcsv($handle, 0, $delimiter, '"', '')) !== false) {

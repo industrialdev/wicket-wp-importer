@@ -44,10 +44,11 @@ final class TierResolver
             return null;
         }
 
-        // Tier NAME is the map key. The tier post title is the canonical name
-        // a client writes into wicket_lockbox_tier_succession_map.
-        $currentTierName = get_the_title($currentTierPostId);
-        if ($currentTierName === '') {
+        // Tier NAME is the map key. Use the RAW post title (get_the_title runs the
+        // the_title filter, which any plugin can hijack with markup/prefixes and
+        // silently break the map lookup).
+        $currentTierName = get_post_field('post_title', $currentTierPostId);
+        if ($currentTierName === '' || $currentTierName === false) {
             return null;
         }
 

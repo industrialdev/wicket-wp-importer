@@ -36,6 +36,15 @@ use WicketImporter\Services\Logger;
  */
 final class MappingResolver
 {
+    /**
+     * Per-instance memo of mappingsForRole() (P2): the HyperFields option is
+     * stable for a request, so the active-filter runs once per role. Instance-
+     * level (not static) so test cases that restub the option get a fresh cache.
+     *
+     * @var array<string, array{late_fees: list<MappingEntry>, discounts: list<MappingEntry>}>
+     */
+    private array $mappingsForRoleCache = [];
+
     public function __construct(
         private readonly ?Logger $logger = null,
         private readonly ?MappingRepository $mappings = null,
@@ -58,6 +67,14 @@ final class MappingResolver
         int $userId,
         object $renewalOrder,
     ): void {
+        // Filter #3 fires once PER line item, but late-fee + discount tallies are
+        // order-level mutations. Without this guard a renewal order with N line
+        // items would receive every fee/discount N times (silent overcharge).
+        // Run the whole-order tally exactly once, then stamp the order.
+        if ($this->mappingsAlreadyApplied($renewalOrder)) {
+            return;
+        }
+
         $role = $this->memberRole($membershipPostId);
         if ($role === '') {
             return;
@@ -69,6 +86,32 @@ final class MappingResolver
         }
 
         $this->applyMappings($matched, $renewalOrder);
+        $this->markMappingsApplied($renewalOrder);
+    }
+
+    /**
+     * Has this renewal order already had its lockbox fee/discount tally applied?
+     * Reads the order meta flag set by markMappingsApplied().
+     */
+    private function mappingsAlreadyApplied(object $renewalOrder): bool
+    {
+        return method_exists($renewalOrder, 'get_meta')
+            && $renewalOrder->get_meta('_wicket_lockbox_mappings_applied') === 'yes';
+    }
+
+    /**
+     * Stamp the order so subsequent Filter #3 callbacks (one per remaining line
+     * item) short-circuit instead of re-applying the whole-order tally.
+     */
+    private function markMappingsApplied(object $renewalOrder): void
+    {
+        if (!method_exists($renewalOrder, 'update_meta_data')) {
+            return;
+        }
+        $renewalOrder->update_meta_data('_wicket_lockbox_mappings_applied', 'yes');
+        if (method_exists($renewalOrder, 'save')) {
+            $renewalOrder->save();
+        }
     }
 
     /**
@@ -81,6 +124,10 @@ final class MappingResolver
      */
     public function mappingsForRole(string $role): array
     {
+        if (isset($this->mappingsForRoleCache[$role])) {
+            return $this->mappingsForRoleCache[$role];
+        }
+
         $repo = $this->mappingRepository();
         $lateFees = array_values(array_filter(
             $repo->getActiveMappings('late_fee'),
@@ -91,7 +138,7 @@ final class MappingResolver
             static fn (MappingEntry $m): bool => $m->roleSlug === $role
         ));
 
-        return ['late_fees' => $lateFees, 'discounts' => $discounts];
+        return $this->mappingsForRoleCache[$role] = ['late_fees' => $lateFees, 'discounts' => $discounts];
     }
 
     /**

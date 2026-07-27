@@ -98,93 +98,43 @@ class DbInstaller
     }
 
     /**
-     * Seed the default late fee mappings into HyperFields options.
+     * Initialize the HyperFields mappings option.
+     *
+     * Core ships NO client billing mappings (AD1: no client/cheque/lockbox
+     * domain data in core). The option is seeded empty; a client (e.g. OBA via
+     * the child theme) supplies its late-fee/discount/section table through the
+     * wicket_import_default_mappings filter, keyed by SKU so it carries zero
+     * environment-specific product IDs (D-LOCKBOX-1: resolve IDs at runtime).
      */
     public static function seedDefaultMappings(): void
     {
         $existing = get_option(self::MAPPINGS_OPTION);
-
-        if (!is_array($existing) || empty($existing)) {
-            $defaults = [
-                [
-                    'role_slug'        => 'late-fee-1',
-                    'product_id'       => 2111,
-                    'product_sku'      => 'LATE-1',
-                    'label'            => 'Late Fee 1',
-                    'mapping_type'     => 'late_fee',
-                    'application_type' => 'product',
-                    'is_active'        => 1,
-                ],
-                [
-                    'role_slug'        => 'late-fee-2',
-                    'product_id'       => 2112,
-                    'product_sku'      => 'LATE-2',
-                    'label'            => 'Late Fee 2 (Reinstatement Fee)',
-                    'mapping_type'     => 'late_fee',
-                    'application_type' => 'product',
-                    'is_active'        => 1,
-                ],
-                [
-                    'role_slug'        => 'late-fee-3-year-0-to-3',
-                    'product_id'       => 2113,
-                    'product_sku'      => 'LATE-3-0-TO-3',
-                    'label'            => 'Late Fee 3 - 0 to 3 Years',
-                    'mapping_type'     => 'late_fee',
-                    'application_type' => 'product',
-                    'is_active'        => 1,
-                ],
-                [
-                    'role_slug'        => 'late-fee-3-regular',
-                    'product_id'       => 2114,
-                    'product_sku'      => 'LATE-3-REG',
-                    'label'            => 'Late Fee 3 - Regular',
-                    'mapping_type'     => 'late_fee',
-                    'application_type' => 'product',
-                    'is_active'        => 1,
-                ],
-                [
-                    'role_slug'        => 'late-fee-4-year-0-to-3',
-                    'product_id'       => 2115,
-                    'product_sku'      => 'LATE-4-0-TO-3',
-                    'label'            => 'Late Fee 4 - 0 to 3 Years',
-                    'mapping_type'     => 'late_fee',
-                    'application_type' => 'product',
-                    'is_active'        => 1,
-                ],
-                [
-                    'role_slug'        => 'late-fee-4-regular',
-                    'product_id'       => 2116,
-                    'product_sku'      => 'LATE-4-REG',
-                    'label'            => 'Late Fee 4',
-                    'mapping_type'     => 'late_fee',
-                    'application_type' => 'product',
-                    'is_active'        => 1,
-                ],
-                [
-                    'role_slug'        => 'late-fee-5',
-                    'product_id'       => 2117,
-                    'product_sku'      => 'LATE-5',
-                    'label'            => 'Late Fee 5',
-                    'mapping_type'     => 'late_fee',
-                    'application_type' => 'product',
-                    'is_active'        => 1,
-                ],
-                [
-                    'role_slug'        => 'late-fee-special-temporary',
-                    'product_id'       => 2118,
-                    'product_sku'      => 'LATE-ST',
-                    'label'            => 'Late Fee - Special Temporary',
-                    'mapping_type'     => 'late_fee',
-                    'application_type' => 'product',
-                    'is_active'        => 1,
-                ],
-            ];
-
-            update_option(self::MAPPINGS_OPTION, [
-                'late_fees' => $defaults,
-                'discounts' => [],
-                'sections'  => [],
-            ]);
+        if (is_array($existing) && $existing !== []) {
+            return;
         }
+
+        /**
+         * Let a client extension supply its default billing mappings.
+         *
+         * @param array $defaults Shape: ['late_fees' => [], 'discounts' => [], 'sections' => []].
+         */
+        $defaults = apply_filters('wicket_import_default_mappings', [
+            'late_fees' => [],
+            'discounts' => [],
+            'sections'  => [],
+        ]);
+
+        // Defensive: enforce the three buckets exist as arrays regardless of
+        // what the filter returned, so MappingRepository never fatals.
+        if (!is_array($defaults)) {
+            $defaults = [];
+        }
+        foreach (['late_fees', 'discounts', 'sections'] as $bucket) {
+            if (!isset($defaults[$bucket]) || !is_array($defaults[$bucket])) {
+                $defaults[$bucket] = [];
+            }
+        }
+
+        update_option(self::MAPPINGS_OPTION, $defaults, false);
     }
 }

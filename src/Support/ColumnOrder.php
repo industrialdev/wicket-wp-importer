@@ -35,7 +35,7 @@ final class ColumnOrder
      *
      * @return list<string> Ordered, de-duplicated column keys.
      */
-    public static function forRows(array $rows, array $columns = null): array
+    public static function forRows(array $rows, ?array $columns = null): array
     {
         if ($columns === null) {
             $columns = self::registeredColumns();
@@ -43,18 +43,22 @@ final class ColumnOrder
 
         // 1. Registered order first.
         $ordered = [];
+        $seen = [];
         foreach ($columns as $column) {
             $key = $column->key;
-            if ($key !== '' && !in_array($key, $ordered, true)) {
+            if ($key !== '' && !isset($seen[$key])) {
+                $seen[$key] = true;
                 $ordered[] = $key;
             }
         }
 
         // 2. Append any extra row keys not covered by the registry, in
         //    first-seen order. Decodes raw_data safely (string JSON or array).
+        //    P5: isset lookup (O(1)) instead of in_array (O(n)) per key — was O(n^2).
         foreach ($rows as $row) {
             foreach (array_keys(self::decodeRowData($row)) as $key) {
-                if (!in_array($key, $ordered, true)) {
+                if (!isset($seen[$key])) {
+                    $seen[$key] = true;
                     $ordered[] = $key;
                 }
             }

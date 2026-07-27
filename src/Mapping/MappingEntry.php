@@ -54,7 +54,10 @@ class MappingEntry
             isset($data['product_sku']) ? (string) $data['product_sku'] : null,
             isset($data['coupon_code']) ? (string) $data['coupon_code'] : null,
             (string) ($data['label'] ?? ''),
-            !isset($data['is_active']) || (bool) $data['is_active'],
+            // B12: default a mapping with no is_active key to INACTIVE (fail-closed
+            // on money). The HyperFields checkbox sets is_active=true on save, so
+            // a missing key means a malformed/legacy row that must not bill.
+            isset($data['is_active']) && (bool) $data['is_active'],
             (int) ($data['sort_order'] ?? 0),
             isset($data['id']) ? (int) $data['id'] : null
         );

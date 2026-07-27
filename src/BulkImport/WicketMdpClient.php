@@ -55,17 +55,27 @@ final class WicketMdpClient
      * primary-email helper, then a direct filter on the address field which
      * catches secondary / alias emails the primary-only helper misses.
      *
+     * Distinguishes "no match" from "lookup failed": a transport/config
+     * failure (client unavailable, helper threw, request threw) returns a
+     * WP_Error instead of null, so PersonResolver::resolve() can fail the row
+     * CLOSED rather than misreading an outage as "no such person" and creating
+     * a duplicate. A genuine no-match (both lookups ran cleanly, no data) still
+     * returns null.
+     *
      * @param string $email Email address to look up.
      *
-     * @return array|null Normalized person array (the raw /people entry) on hit,
-     *                    null on no match or when the SDK client is unavailable.
+     * @return array|null|\WP_Error Normalized person array (the raw /people entry)
+     *                    on hit, null on a clean no-match, WP_Error when the
+     *                    lookup itself failed (caller must fail-closed).
      */
-    public function findPersonByEmail(string $email): ?array
+    public function findPersonByEmail(string $email): array|null|\WP_Error
     {
         $email = trim($email);
         if ($email === '') {
             return null;
         }
+
+        $primary_failed = false;
 
         // 1. Primary-email lookup via the rung-2 helper.
         if (function_exists('wicket_get_person_by_email')) {
@@ -75,7 +85,10 @@ final class WicketMdpClient
                     return $this->normalizePerson($person);
                 }
             } catch (\Throwable $e) {
-                // Non-fatal: fall through to the secondary-email filter below.
+                // Non-fatal: fall through to the secondary-email filter, but
+                // remember the primary errored so a final "no data" is reported
+                // as a lookup failure rather than a clean miss.
+                $primary_failed = true;
                 $this->logger->warning('wicket_get_person_by_email threw; trying secondary filter.', ['email' => $email, 'error' => $e->getMessage()]);
             }
         }
@@ -84,15 +97,25 @@ final class WicketMdpClient
         //    alias addresses). Uses the base plugin's configured client object.
         $client = $this->client();
         if ($client === null) {
-            return null;
+            return new \WP_Error('mdp_lookup_unavailable', 'Wicket API client is not available.');
         }
         try {
             $response = $client->get('/people?filter[emails_address_eq]=' . rawurlencode($email));
-            if (!empty($response['data'][0])) {
-                return $this->normalizePerson($response['data'][0]);
-            }
         } catch (\Throwable $e) {
-            $this->logger->warning('Secondary-email lookup failed.', ['email' => $email, 'error' => $e->getMessage()]);
+            $this->logger->error('Secondary person lookup failed.', ['email' => $email, 'error' => $e->getMessage()]);
+
+            return new \WP_Error('mdp_lookup_failed', $e->getMessage());
+        }
+
+        if (!empty($response['data'][0])) {
+            return $this->normalizePerson($response['data'][0]);
+        }
+
+        // No data. If the primary lookup errored, this is not a trustworthy
+        // "no match" (the secondary may have hit the same outage); surface a
+        // lookup failure so the caller fails the row closed.
+        if ($primary_failed) {
+            return new \WP_Error('mdp_lookup_failed', 'Primary person lookup errored; cannot confirm no-match.');
         }
 
         return null;
@@ -217,19 +240,23 @@ final class WicketMdpClient
      * Delegates to the rung-2 helper which queries
      * /people/{uuid}/membership_entries?filter[active_at]=now.
      *
+     * S3: returns null (UNKNOWN) when the lookup itself fails (client missing,
+     * request threw) so PersonResolver can fail the row CLOSED instead of
+     * assuming "no active membership" and risking a duplicate. Only a
+     * successful query returns a definitive bool.
+     *
      * @param string $uuid Person UUID.
      *
-     * @return bool True when one or more active memberships exist.
+     * @return bool|null True when one or more active memberships exist, false when
+         *                   confirmed none, null when the check failed (unknown).
      */
-    public function hasActiveMembership(string $uuid): bool
+    public function hasActiveMembership(string $uuid): ?bool
     {
         $client = $this->client();
         if ($client === null) {
-            // Fail open: without the client we cannot confirm, so treat as inactive
-            // and let the import proceed. Logged for visibility.
-            $this->logger->warning('wicket_api_client unavailable; assuming no active membership.', ['uuid' => $uuid]);
+            $this->logger->warning('wicket_api_client unavailable; membership status unknown.', ['uuid' => $uuid]);
 
-            return false;
+            return null;
         }
 
         // Query the SDK client directly. The base helper
@@ -240,13 +267,9 @@ final class WicketMdpClient
         try {
             $response = $client->get("people/{$uuid}/membership_entries?filter[active_at]=now");
         } catch (\Throwable $e) {
-            // Fail open with visibility: an API failure surfaces as a warning and
-            // the import proceeds. Caller (PersonResolver) cannot distinguish this
-            // from a clean no-match via the return value, so the warning log is the
-            // audit trail. Acceptable trade-off vs halting the whole batch.
-            $this->logger->warning('Active-membership query threw; assuming no active membership.', ['uuid' => $uuid, 'error' => $e->getMessage()]);
+            $this->logger->warning('Active-membership query threw; membership status unknown.', ['uuid' => $uuid, 'error' => $e->getMessage()]);
 
-            return false;
+            return null;
         }
 
         return !empty($response['data']);

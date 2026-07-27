@@ -124,7 +124,7 @@ class MappingRepository
             $options[$key][] = $entry->toArray();
         }
 
-        update_option(DbInstaller::MAPPINGS_OPTION, $options);
+        update_option(DbInstaller::MAPPINGS_OPTION, $options, false);
     }
 
     /**
@@ -147,7 +147,7 @@ class MappingRepository
                     fn (array $row) => ($row['role_slug'] ?? '') !== $roleSlug
                 )
             );
-            update_option(DbInstaller::MAPPINGS_OPTION, $options);
+            update_option(DbInstaller::MAPPINGS_OPTION, $options, false);
         }
     }
 

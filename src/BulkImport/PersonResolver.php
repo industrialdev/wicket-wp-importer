@@ -69,8 +69,15 @@ final class PersonResolver
         try {
             $existing = $this->client->findPersonByEmail($email);
         } catch (\Throwable $e) {
-            // Read-only pre-pass: a lookup failure is non-fatal. Treat as no match
-            // so runImport (12.4) retries the lookup and handles the error there.
+            // Defensive: findPersonByEmail returns WP_Error rather than throwing,
+            // but keep the guard so an unexpected throw is still contained.
+            return ['match' => 'none', 'uuid' => null, 'existing' => null];
+        }
+
+        if (is_wp_error($existing)) {
+            // Read-only pre-pass: a lookup FAILURE is not a clean "no match".
+            // Leave the row unclassified here; the destructive resolve() will
+            // fail it closed so we never create a duplicate against an outage.
             return ['match' => 'none', 'uuid' => null, 'existing' => null];
         }
 
@@ -117,6 +124,16 @@ final class PersonResolver
             return PersonResolutionResult::failed(sprintf('Person lookup failed: %s', $e->getMessage()));
         }
 
+        if (is_wp_error($existing)) {
+            // C1: a lookup failure is NOT a clean "no match". Fail the row closed
+            // rather than misread an MDP outage as "no such person" and create a
+            // duplicate person + WP user + membership for the whole batch.
+            return PersonResolutionResult::failed(sprintf(
+                'Person lookup failed (not creating to avoid a duplicate): %s',
+                $existing->get_error_message()
+            ));
+        }
+
         // --- Scenario A: no match -> create --------------------------------
         if ($existing === null) {
             return $this->createScenario($person, $row);
@@ -133,16 +150,25 @@ final class PersonResolver
         // --- Exact match: guard on active membership -----------------------
         $uuid = (string) $existing['id'];
         try {
-            if ($this->client->hasActiveMembership($uuid)) {
-                // 13.4: do not auto-process existing active members.
-                return PersonResolutionResult::skippedActiveMembership(
-                    sprintf('Person %s already holds an active membership.', $uuid)
-                );
-            }
+            $active = $this->client->hasActiveMembership($uuid);
         } catch (\Throwable $e) {
             // 13.5: a conflict-check failure fails the row rather than
             // silently proceeding to a duplicate membership.
             return PersonResolutionResult::failed(sprintf('Active-membership check failed: %s', $e->getMessage()));
+        }
+
+        // S3: unknown status (null) fails CLOSED — never assume "not active" on an
+        // MDP error, or a transient blip double-charges an existing member.
+        if ($active === null) {
+            return PersonResolutionResult::failed(
+                sprintf('Could not confirm membership status for %s; skipping to avoid a duplicate.', $uuid)
+            );
+        }
+        if ($active === true) {
+            // 13.4: do not auto-process existing active members.
+            return PersonResolutionResult::skippedActiveMembership(
+                sprintf('Person %s already holds an active membership.', $uuid)
+            );
         }
 
         // --- Scenario B: exact match, no active membership -> merge --------

@@ -78,13 +78,16 @@ final class ImportPipeline
         // lifecycle. Re-validating a row that is already imported/failed would
         // rewrite its validation_status and desync the UI (imported row showing
         // a stale validation verdict). Only pre-import rows are re-validated.
-        $terminal = ['imported' => true, 'updated' => true, 'skipped' => true, 'failed' => true, 'email_conflict' => true];
-
         $csvRows = [];
         $byIndex = [];
         foreach ($rowsData as $row) {
-            $importStatus = (string) ($row['import_status'] ?? '');
-            if (isset($terminal[$importStatus])) {
+            // B8: re-validate ONLY rows still awaiting import (import_status =
+            // 'pending'). The prior terminal-status allow-list missed
+            // needs_review / skipped_active_membership / expired /
+            // phase*_complete / processing, so it rewrote validation verdicts
+            // on rows already past validation (desync the UI) and could touch
+            // rows an in-flight /run is mid-way through.
+            if ((string) ($row['import_status'] ?? '') !== 'pending') {
                 continue;
             }
             $csvRows[] = $this->csvRowFromStaged($row);
@@ -321,6 +324,12 @@ final class ImportPipeline
         // 0 affected rows and short-circuits to the empty-tally fast path.
         $claimedCount = $staging->claimImportableInSession($sessionId);
 
+        // B7: a false claim means the UPDATE itself failed (DB error); fail the
+        // run closed instead of returning an empty 200 that masks the error.
+        if ($claimedCount === false) {
+            return new \WP_Error('import_claim_failed', 'Failed to claim importable rows (database error).');
+        }
+
         // No-op fast path: nothing claimed (either nothing to process, or a
         // concurrent /run beat us to it). Return empty tally.
         if ($claimedCount === 0) {
@@ -382,13 +391,18 @@ final class ImportPipeline
                         // entry; flat wins because it's what the contract requires,
                         // and id/attributes are preserved for hook consumers (12.6 / 12.8)
                         // that want the full MDP payload.
+                        // B11: array_merge gives the SECOND argument precedence.
+                        // The contract requires the flat identity (first_name /
+                        // last_name / email) to win for ImportAdapter's WP-user
+                        // and CPT seeding, so merge $mdpEntry FIRST and the flat
+                        // identity SECOND (the original arg order was inverted).
                         $personEntry = array_merge(
+                            $mdpEntry,
                             [
                                 'first_name' => (string) ($person['first_name'] ?? ''),
                                 'last_name'  => (string) ($person['last_name'] ?? ''),
                                 'email'      => (string) ($person['email'] ?? ''),
-                            ],
-                            $mdpEntry
+                            ]
                         );
                         $hadUuid = !empty($row['mdp_uuid']);
 

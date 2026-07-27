@@ -107,13 +107,18 @@ final class SubscriptionCreator
      */
     private function createSubscriptionForProduct(object $order, int $productId, int $membershipPostId): int
     {
-        $sub = $this->newPendingSubscription($order, $productId);
-        if ($sub === null) {
+        // B2: resolve the product BEFORE creating the subscription, else a bad
+        // product ID leaves an orphan line-item-less pending subscription
+        // parented to the order (and a retry mints another each attempt).
+        $product = $this->product($productId);
+        if ($product === null) {
+            $this->logger?->warning('Membership product missing; not creating a subscription.', ['product_id' => $productId]);
+
             return 0;
         }
 
-        $product = $this->product($productId);
-        if ($product === null) {
+        $sub = $this->newPendingSubscription($order, $productId);
+        if ($sub === null) {
             return 0;
         }
 
@@ -133,16 +138,28 @@ final class SubscriptionCreator
      */
     private function createSectionSubscription(object $order, array $productIds, int $membershipPostId): int
     {
-        $sub = $this->newPendingSubscription($order, $productIds[0]);
+        // B2: resolve every product up front; bail if none resolve, so we never
+        // create a subscription we then can't populate.
+        $products = [];
+        foreach ($productIds as $productId) {
+            $product = $this->product($productId);
+            if ($product !== null) {
+                $products[] = $product;
+            }
+        }
+        if ($products === []) {
+            $this->logger?->warning('No section products resolved; not creating a section subscription.', ['product_ids' => $productIds]);
+
+            return 0;
+        }
+
+        $sub = $this->newPendingSubscription($order, (int) $productIds[0]);
         if ($sub === null) {
             return 0;
         }
 
-        foreach ($productIds as $productId) {
-            $product = $this->product($productId);
-            if ($product !== null) {
-                $sub->add_product($product, 1);
-            }
+        foreach ($products as $product) {
+            $sub->add_product($product, 1);
         }
         $this->stampMembershipMeta($sub, $membershipPostId);
         $sub->calculate_totals();
@@ -178,6 +195,19 @@ final class SubscriptionCreator
             $sub->set_address($order->get_address('billing'), 'billing');
         }
 
+        // C4: a cheque subscription needs an explicit payment method + manual
+        // renewal flag; wcs_create_subscription does NOT inherit the parent
+        // order's payment method, so without these WCS cannot activate it.
+        $this->setChequePaymentMethod($sub, $order);
+
+        // C4: wcs_create_subscription only sets start_date. Without an explicit
+        // next_payment the subscription never schedules a renewal order (silent
+        // revenue loss, surfaced a billing cycle later).
+        $next = $this->nextPaymentDate($period, $interval);
+        if ($next !== '' && method_exists($sub, 'update_dates')) {
+            $sub->update_dates(['next_payment' => $next]);
+        }
+
         return $sub;
     }
 
@@ -209,11 +239,22 @@ final class SubscriptionCreator
         if ($userId === 0 || $tierPostId === 0) {
             return 0;
         }
+        // P1: per-row double-meta-join. Minimize the query cost (no found-row
+        // count, no term/meta cache priming) and prefer the NEWEST matching post
+        // (orderby date DESC) so an expired membership does not win over the
+        // current one. Preferred long-term fix per the lockbox plan: pass the
+        // membership post ID into create() once OrderCreator owns that step, so
+        // this lookup disappears entirely.
         $posts = get_posts([
             'post_type' => $this->membershipCptSlug(),
             'numberposts' => 1,
             'post_status' => 'any',
             'fields' => 'ids',
+            'no_found_rows' => true,
+            'update_post_meta_cache' => false,
+            'update_post_term_cache' => false,
+            'orderby' => 'date',
+            'order' => 'DESC',
             'meta_query' => [
                 ['key' => 'user_id', 'value' => $userId],
                 ['key' => 'membership_tier_post_id', 'value' => $tierPostId],
@@ -228,6 +269,49 @@ final class SubscriptionCreator
      *
      * @return array{0:string,1:int}
      */
+    /**
+     * Set the cheque payment method + manual-renewal flag on a subscription.
+     * Cheque renewals are manual: WCS must not attempt an auto-charge against a
+     * gateway the subscription does not have. The method is filterable so a
+     * client can route to a different gateway.
+     */
+    private function setChequePaymentMethod(object $subscription, object $order): void
+    {
+        $method = method_exists($order, 'get_payment_method') ? (string) $order->get_payment_method() : '';
+        if ($method === '') {
+            /** @var string $method Filterable default payment method for importer-created subscriptions. */
+            $method = (string) apply_filters('wicket_import_subscription_payment_method', 'cheque', $order);
+        }
+        if (method_exists($subscription, 'set_payment_method')) {
+            $subscription->set_payment_method($method);
+        }
+        if (method_exists($subscription, 'set_requires_manual_renewal')) {
+            $subscription->set_requires_manual_renewal(true);
+        }
+    }
+
+    /**
+     * Compute the next_payment date (UTC) from the billing period + interval.
+     *
+     * @return string Y-m-d H:i:s in UTC, or '' when the period is unrecognized.
+     */
+    private function nextPaymentDate(string $period, int $interval): string
+    {
+        $unit = match ($period) {
+            'day'   => 'day',
+            'week'  => 'week',
+            'month' => 'month',
+            'year'  => 'year',
+            default => '',
+        };
+        if ($unit === '' || $interval < 1) {
+            return '';
+        }
+        $next = strtotime("+{$interval} {$unit}s");
+
+        return $next !== false ? gmdate('Y-m-d H:i:s', $next) : '';
+    }
+
     private function billingForProduct(int $productId): array
     {
         $period = 'year';

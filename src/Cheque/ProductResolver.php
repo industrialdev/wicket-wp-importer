@@ -54,21 +54,40 @@ final class ProductResolver
 
         $lateFeeProductIds = $this->lateFeeProductIds($membershipPostId);
 
-        $allProductIds = array_merge([$membershipProductId], $sectionProductIds, $lateFeeProductIds);
-        foreach ($allProductIds as $productId) {
+        // B5: only RECURRING products (membership + sections) must be WC
+        // subscriptions. Late-fee products are one-off charges and only need to
+        // exist. Requiring all of them to be subscriptions rejected every row
+        // that carried a late fee.
+        foreach (array_merge([$membershipProductId], $sectionProductIds) as $productId) {
             if (!$this->isSubscription($productId)) {
                 return ResolvedProducts::error(
-                    sprintf('Product %d is missing or not a subscription product.', $productId)
+                    sprintf('Recurring product %d is missing or not a subscription product.', $productId)
                 );
+            }
+        }
+        foreach ($lateFeeProductIds as $productId) {
+            if (!$this->productExists($productId)) {
+                return ResolvedProducts::error(sprintf('Late-fee product %d does not exist.', $productId));
             }
         }
 
         $expected = 0.0;
-        foreach ($allProductIds as $productId) {
+        foreach (array_merge([$membershipProductId], $sectionProductIds, $lateFeeProductIds) as $productId) {
+            $expected += $this->productPrice($productId);
+        }
+        // B6: subtract product-type discounts so a discounted member is not
+        // false-positive gated. Coupon-code discounts can't be priced without
+        // cart context; the authoritative divergence check is the order's
+        // computed grand total, verified post-creation when OrderCreator lands.
+        foreach ($this->discountProductIds($membershipPostId) as $productId) {
             $expected += $this->productPrice($productId);
         }
 
-        $divergent = abs($expected - $csvTotal) > self::DIVERGENCE_TOLERANCE;
+        // B6: compare in integer cents with a filterable tolerance (a float >
+        // 0.01 comparison drifts on the edge and is not adjustable per client).
+        $tolerance = (float) apply_filters('wicket_import_divergence_tolerance', self::DIVERGENCE_TOLERANCE);
+        $divergent = abs((int) round($expected * 100) - (int) round($csvTotal * 100))
+            > (int) round($tolerance * 100);
 
         return new ResolvedProducts(
             membershipProductId: $membershipProductId,
@@ -122,6 +141,44 @@ final class ProductResolver
         $tier = get_post($tierPostId);
 
         return $tier ? (string) $tier->post_name : '';
+    }
+
+    /**
+     * Does the product exist (regardless of subscription-ness)? Used for
+     * one-off late-fee products that are not subscriptions but must be purchasable.
+     */
+    private function productExists(int $productId): bool
+    {
+        if ($productId === 0 || !function_exists('wc_get_product')) {
+            return false;
+        }
+
+        return wc_get_product($productId) !== false;
+    }
+
+    /**
+     * Product-type discount IDs applicable to the member's role, for the
+     * divergence total. Coupon-type discounts are excluded (unpriceable without
+     * cart context).
+     *
+     * @return list<int>
+     */
+    private function discountProductIds(int $membershipPostId): array
+    {
+        $role = $this->tierSlug($membershipPostId);
+        if ($role === '') {
+            return [];
+        }
+
+        $entries = $this->mappingResolver()->mappingsForRole($role)['discounts'] ?? [];
+        $ids = [];
+        foreach ($entries as $entry) {
+            if (($entry->applicationType ?? '') === 'product' && !empty($entry->productId)) {
+                $ids[] = (int) $entry->productId;
+            }
+        }
+
+        return $ids;
     }
 
     /**

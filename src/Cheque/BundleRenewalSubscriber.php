@@ -55,15 +55,21 @@ final class BundleRenewalSubscriber
      * @return array{tier_post_id:int, product_id:int}|null
      */
     public function resolveRenewalTierProduct(
-        mixed $override,
-        int $oldMembershipPostId,
-        int $userId,
-        int $newBundlePostId,
-        int $oldBundlePostId,
-        array $coreDefault,
-    ): ?array {
+        mixed $override = null,
+        int $oldMembershipPostId = 0,
+        int $userId = 0,
+        int $newBundlePostId = 0,
+        int $oldBundlePostId = 0,
+        array $coreDefault = [],
+    ): mixed {
+        // B3: defaults on every param (the cross-repo fire site may pass fewer
+        // than 6 args) + a `mixed` return so a non-array prior override passes
+        // through unchanged instead of TypeErroing inside the renewal flow.
         if ($override !== null) {
             return $override;
+        }
+        if ($oldMembershipPostId === 0) {
+            return null;
         }
 
         return $this->tierResolver->resolveRenewalTier($oldMembershipPostId);
@@ -82,16 +88,19 @@ final class BundleRenewalSubscriber
      * @param mixed $renewalOrder      The renewal order (WC_Order).
      */
     public function applyLineItemPrice(
-        mixed $override,
-        mixed $item,
-        int $itemId,
-        int $membershipPostId,
-        int $userId,
-        mixed $renewalOrder,
-    ): null {
-        if (is_object($renewalOrder)) {
+        mixed $override = null,
+        mixed $item = null,
+        int $itemId = 0,
+        int $membershipPostId = 0,
+        int $userId = 0,
+        mixed $renewalOrder = null,
+    ): mixed {
+        // B4: single-channel per D-LOCKBOX-2 (core ignores the return), but pass
+        // $override through unchanged so this callback never clobbers the value
+        // a prior subscriber set for the next one in the filter chain.
+        if (is_object($renewalOrder) && is_object($item)) {
             $this->mappingResolver->applyLineItemAdjustments(
-                is_object($item) ? $item : new \stdClass(),
+                $item,
                 $itemId,
                 $membershipPostId,
                 $userId,
@@ -99,6 +108,6 @@ final class BundleRenewalSubscriber
             );
         }
 
-        return null;
+        return $override;
     }
 }

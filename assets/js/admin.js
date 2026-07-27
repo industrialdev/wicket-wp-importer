@@ -140,9 +140,6 @@
 		var uploadBtn = preview.querySelector('.wicket-importer-upload-btn');
 		var clearBtn = preview.querySelector('.wicket-importer-clear-btn');
 		var selectedFile = null;
-		// Monotonic token so a stale FileReader (from a cleared / re-selected
-		// file) can't overwrite the current preview (nit 3).
-		var readToken = 0;
 
 		// --- click / keyboard to browse ---------------------------------
 		zone.addEventListener('click', function() {
@@ -183,7 +180,7 @@
 		// --- clear ------------------------------------------------------
 		if (clearBtn) {
 			clearBtn.addEventListener('click', function() {
-				readToken++; // cancel any pending row-count read (nit 3)
+				cancelRowCount(); // cancel any pending row-count read (nit 3)
 				selectedFile = null;
 				input.value = '';
 				preview.hidden = true;
@@ -206,7 +203,7 @@
 				return;
 			}
 
-			readToken++; // invalidate any prior pending read (nit 3)
+			cancelRowCount(); // invalidate any prior pending read (nit 3)
 			selectedFile = file;
 			if (nameEl) { nameEl.textContent = file.name; }
 			if (sizeEl) { sizeEl.textContent = formatBytes(file.size); }

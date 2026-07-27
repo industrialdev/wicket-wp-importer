@@ -45,6 +45,29 @@ final class WicketImporter
     }
 
     /**
+     * Runtime dependency check (S4). Returns true only when the plugins the
+     * importer calls unguarded are loaded: the base plugin's MDP client and
+     * the memberships controllers/tiers. WooCommerce is required by
+     * memberships, so its presence is implied.
+     */
+    private function dependenciesAvailable(): bool
+    {
+        return function_exists('wicket_api_client')
+            && class_exists('Wicket_Memberships\Membership_Controller');
+    }
+
+    /**
+     * Admin notice shown when a required sibling plugin is missing (S4), so the
+     * failure is visible instead of a white screen.
+     */
+    public function renderMissingDependencyNotice(): void
+    {
+        echo '<div class="notice notice-error"><p>'
+            . esc_html__('Wicket Importer is inactive: a required plugin (Wicket base plugin or Wicket Memberships) is missing or deactivated. Re-enable it to resume imports.', 'wicket-wp-importer')
+            . '</p></div>';
+    }
+
+    /**
      * Static wrapper for hooks setup.
      */
     public static function plugin_setup(): void
@@ -57,6 +80,16 @@ final class WicketImporter
      */
     private function setup(): void
     {
+        // S4: guard runtime dependencies. The Requires Plugins header is enforced
+        // at activation, not at runtime — deactivate wicket-wp-base-plugin or
+        // wicket-wp-memberships and an unguarded call below (wicket_api_client /
+        // Membership_Controller) white-screens the request.
+        if (!$this->dependenciesAvailable()) {
+            add_action('admin_notices', [$this, 'renderMissingDependencyNotice']);
+
+            return;
+        }
+
         if (is_admin() || (defined('WP_CLI') && WP_CLI)) {
             BulkImport\Database\DbInstaller::checkSchemaVersion();
         }
@@ -133,13 +166,25 @@ final class WicketImporter
     {
         /** @var int $ttl Filterable session TTL in hours. */
         $ttl = (int) apply_filters('wicket_import_session_ttl_hours', WICKET_IMPORT_SESSION_TTL_HOURS);
-        $expired = (new ImportStagingTable())->expireStaleSessions($ttl);
+        $staging = new ImportStagingTable();
 
+        $expired = $staging->expireStaleSessions($ttl);
         if ($expired > 0) {
             (new Services\Logger())->info(sprintf(
                 'Session TTL expiry: marked %d row(s) expired (>%dh inactive).',
                 $expired,
                 $ttl
+            ));
+        }
+
+        // C5: reclaim rows stuck in 'processing' after a crashed /run so the
+        // session stops returning 409 forever. Needs-review (never pending) —
+        // we cannot tell whether the membership was already created.
+        $reclaimed = $staging->expireStaleClaims();
+        if ($reclaimed > 0) {
+            (new Services\Logger())->warning(sprintf(
+                'Reclaimed %d stuck processing row(s) after an interrupted run.',
+                $reclaimed
             ));
         }
     }
