@@ -97,4 +97,46 @@ final class WicketImporter
         }
         throw new \BadMethodCallException("Service '{$name}' does not exist in Wicket Importer instances.");
     }
+
+    /**
+     * Activation: schedule the hourly session-expiry event (Task 38.3).
+     * Sits alongside the existing DbInstaller::createTables activation hook
+     * (WordPress permits multiple activation callbacks).
+     */
+    public static function scheduleSessionExpiry(): void
+    {
+        if (!wp_next_scheduled('wicket_import_expire_stale_sessions')) {
+            wp_schedule_event(time(), 'hourly', 'wicket_import_expire_stale_sessions');
+        }
+    }
+
+    /**
+     * Deactivation: clear the scheduled session-expiry event (Task 38.3).
+     */
+    public static function clearSessionExpiry(): void
+    {
+        wp_clear_scheduled_hook('wicket_import_expire_stale_sessions');
+    }
+
+    /**
+     * Cron callback (Task 38.3): mark staged rows still pending past the TTL
+     * as 'expired' so abandoned sessions stop blocking new uploads and stop
+     * accumulating. Constructs the staging table directly (it only needs
+     * $wpdb) so the callback never depends on the plugin singleton being
+     * initialized when wp-cron fires.
+     */
+    public static function expireStaleSessions(): void
+    {
+        /** @var int $ttl Filterable session TTL in hours. */
+        $ttl = (int) apply_filters('wicket_import_session_ttl_hours', WICKET_IMPORT_SESSION_TTL_HOURS);
+        $expired = (new ImportStagingTable())->expireStaleSessions($ttl);
+
+        if ($expired > 0) {
+            (new Services\Logger())->info(sprintf(
+                'Session TTL expiry: marked %d row(s) expired (>%dh inactive).',
+                $expired,
+                $ttl
+            ));
+        }
+    }
 }

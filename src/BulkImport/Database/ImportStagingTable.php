@@ -390,6 +390,40 @@ class ImportStagingTable
     }
 
     /**
+     * Mark staged rows still pending past the session TTL as 'expired'
+     * (Task 38.3).
+     *
+     * Abandoned sessions (uploaded/validated but never run, or a run that
+     * crashed before claiming) leave rows in 'pending' forever; those rows
+     * keep hasActiveSession() true (blocking new uploads) and bloat the
+     * table. The hourly cron scheduled on plugin activation calls this with
+     * the filterable wicket_import_session_ttl_hours (default 24h).
+     *
+     * Only 'pending' rows are expired: a row in 'processing' may belong to
+     * an in-flight /run, and terminal statuses (imported/failed/etc.) are
+     * already settled. Expired rows keep their raw_data for audit/export.
+     *
+     * @param int $ttlHours Max age in hours before a pending row is expired.
+     * @return int Number of rows marked expired.
+     */
+    public function expireStaleSessions(int $ttlHours): int
+    {
+        global $wpdb;
+        $ttlHours = max(1, $ttlHours);
+
+        $affected = $wpdb->query(
+            $wpdb->prepare(
+                "UPDATE {$this->table_name} SET import_status = 'expired', import_message = %s, processed_at = %s WHERE import_status = 'pending' AND created_at < (NOW() - INTERVAL %d HOUR)",
+                sprintf('Session expired (auto, >%dh inactive)', $ttlHours),
+                current_time('mysql'),
+                $ttlHours
+            )
+        );
+
+        return is_int($affected) ? $affected : 0;
+    }
+
+    /**
      * Count pending rows in a session.
      */
     public function countPendingInSession(string $session_id): int
@@ -481,6 +515,7 @@ class ImportStagingTable
             'phase1_complete'         => 0,
             'phase2_complete'         => 0,
             'needs_review'            => 0,
+            'expired'                 => 0,
         ];
 
         foreach ($results as $row) {

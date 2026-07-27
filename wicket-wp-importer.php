@@ -37,3 +37,8 @@ add_action('plugins_loaded', [WicketImporter\WicketImporter::class, 'plugin_setu
 
 // Activation hook for DB installation
 register_activation_hook(__FILE__, [WicketImporter\BulkImport\Database\DbInstaller::class, 'createTables']);
+
+// Session TTL auto-expiry (Task 38.3): hourly cron + activation/deactivation pair.
+register_activation_hook(__FILE__, [WicketImporter\WicketImporter::class, 'scheduleSessionExpiry']);
+register_deactivation_hook(__FILE__, [WicketImporter\WicketImporter::class, 'clearSessionExpiry']);
+add_action('wicket_import_expire_stale_sessions', [WicketImporter\WicketImporter::class, 'expireStaleSessions']);
