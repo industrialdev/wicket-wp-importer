@@ -19,6 +19,10 @@ class DbInstaller
             self::createTables();
             self::seedDefaultMappings();
             update_option(self::DB_VERSION_OPTION, WICKET_IMPORT_DB_VERSION);
+            // Backfill the session-expiry cron on upgrade so installs activated
+            // before Task 38.3 land the schedule without a manual re-activation
+            // (register_activation_hook only fires on activate). Idempotent.
+            \WicketImporter\WicketImporter::scheduleSessionExpiry();
         }
     }
 

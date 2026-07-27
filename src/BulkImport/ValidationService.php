@@ -108,9 +108,13 @@ final class ValidationService
 
         $duplicates = $this->detectDuplicates($rows, $columnDefinitions, $results);
 
-        // Invariant: flagged ∩ duplicates = ∅. detectDuplicates only promotes
-        // initially-valid rows, so a row can never be in both buckets.
-        $validCount = count($rows) - count($flagged) - count($duplicates);
+        // Nit#8: count the valid results directly instead of subtracting flagged
+        // + duplicates (subtraction could go negative if two rows ever shared a
+        // rowIndex, and obscures the actual valid set).
+        $validCount = count(array_filter(
+            $results,
+            static fn (ValidationResult $r): bool => $r->status === ValidationResult::STATUS_VALID
+        ));
 
         return new ValidationSummary(
             total: count($rows),

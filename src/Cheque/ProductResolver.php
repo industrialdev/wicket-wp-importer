@@ -114,14 +114,12 @@ final class ProductResolver
     }
 
     /**
-     * Late-fee product IDs applicable to the member's role.
-     *
-     * Role resolution mirrors MappingResolver::memberRole (tier post slug); kept
-     * local to avoid widening MappingResolver's public API just for this caller.
+     * Late-fee product IDs applicable to the member's role (via the shared
+     * MappingResolver::memberRole resolver).
      */
     private function lateFeeProductIds(int $membershipPostId): array
     {
-        $role = $this->tierSlug($membershipPostId);
+        $role = MappingResolver::memberRole($membershipPostId);
         if ($role === '') {
             return [];
         }
@@ -130,17 +128,6 @@ final class ProductResolver
         $ids = array_map(static fn ($e): int => (int) ($e->productId ?? 0), $entries);
 
         return array_values(array_filter($ids, static fn (int $id): bool => $id > 0));
-    }
-
-    private function tierSlug(int $membershipPostId): string
-    {
-        $tierPostId = (int) get_post_meta($membershipPostId, 'membership_tier_post_id', true);
-        if ($tierPostId === 0) {
-            return '';
-        }
-        $tier = get_post($tierPostId);
-
-        return $tier ? (string) $tier->post_name : '';
     }
 
     /**
@@ -165,7 +152,7 @@ final class ProductResolver
      */
     private function discountProductIds(int $membershipPostId): array
     {
-        $role = $this->tierSlug($membershipPostId);
+        $role = MappingResolver::memberRole($membershipPostId);
         if ($role === '') {
             return [];
         }

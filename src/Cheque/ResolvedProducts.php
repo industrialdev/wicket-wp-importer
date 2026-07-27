@@ -32,6 +32,11 @@ final class ResolvedProducts
         public readonly ?string $error = null,
     ) {}
 
+    public function isError(): bool
+    {
+        return $this->error !== null;
+    }
+
     /**
      * Failure shape: a resolution error (bad/missing product) gates the row
      * out of order creation. All product lists are empty, total is 0.0.

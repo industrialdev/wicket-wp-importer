@@ -4,67 +4,54 @@ declare(strict_types=1);
 
 namespace WicketImporter\Mapping;
 
-class MappingEntry
+/**
+ * Immutable mapping entry (a late-fee / discount / section rule).
+ *
+ * Readonly:HyperFields writes the option directly and MappingRepository is
+ * read-only, so nothing mutates an entry after construction. The mutable
+ * version existed only to support a since-removed toggleActive().
+ */
+final readonly class MappingEntry
 {
-    public ?int $id;
-    public string $roleSlug;
-    public string $mappingType;      // 'late_fee' | 'discount' | 'section'
-    public string $applicationType;  // 'product' | 'coupon'
-    public ?int $productId;
-    public ?string $productSku;
-    public ?string $couponCode;
-    public string $label;
-    public bool $isActive;
-    public int $sortOrder;
-
     public function __construct(
-        string $roleSlug,
-        string $mappingType,
-        string $applicationType = 'product',
-        ?int $productId = null,
-        ?string $productSku = null,
-        ?string $couponCode = null,
-        string $label = '',
-        bool $isActive = true,
-        int $sortOrder = 0,
-        ?int $id = null
-    ) {
-        $this->roleSlug = $roleSlug;
-        $this->mappingType = $mappingType;
-        $this->applicationType = $applicationType;
-        $this->productId = $productId;
-        $this->productSku = $productSku;
-        $this->couponCode = $couponCode;
-        $this->label = $label ?: $roleSlug;
-        $this->isActive = $isActive;
-        $this->sortOrder = $sortOrder;
-        $this->id = $id;
-    }
+        public string $roleSlug,
+        public string $mappingType,
+        public string $applicationType = 'product',
+        public ?int $productId = null,
+        public ?string $productSku = null,
+        public ?string $couponCode = null,
+        public string $label = '',
+        public bool $isActive = true,
+        public int $sortOrder = 0,
+        public ?int $id = null,
+    ) {}
 
     /**
      * Instantiate from raw array format stored in HyperFields options.
+     *
+     * @param array<string,mixed> $data
      */
     public static function fromArray(array $data, string $type): self
     {
         return new self(
-            (string) ($data['role_slug'] ?? ''),
-            $type,
-            (string) ($data['application_type'] ?? 'product'),
-            isset($data['product_id']) ? (int) $data['product_id'] : null,
-            isset($data['product_sku']) ? (string) $data['product_sku'] : null,
-            isset($data['coupon_code']) ? (string) $data['coupon_code'] : null,
-            (string) ($data['label'] ?? ''),
-            // B12: default a mapping with no is_active key to INACTIVE (fail-closed
-            // on money). The HyperFields checkbox sets is_active=true on save, so
-            // a missing key means a malformed/legacy row that must not bill.
-            isset($data['is_active']) && (bool) $data['is_active'],
-            (int) ($data['sort_order'] ?? 0),
-            isset($data['id']) ? (int) $data['id'] : null
+            roleSlug: (string) ($data['role_slug'] ?? ''),
+            mappingType: $type,
+            applicationType: (string) ($data['application_type'] ?? 'product'),
+            productId: isset($data['product_id']) ? (int) $data['product_id'] : null,
+            productSku: isset($data['product_sku']) ? (string) $data['product_sku'] : null,
+            couponCode: isset($data['coupon_code']) ? (string) $data['coupon_code'] : null,
+            label: (string) ($data['label'] ?? ''),
+            // B12: a missing is_active key defaults to INACTIVE (fail-closed).
+            isActive: isset($data['is_active']) && (bool) $data['is_active'],
+            sortOrder: (int) ($data['sort_order'] ?? 0),
+            id: isset($data['id']) ? (int) $data['id'] : null,
         );
     }
 
     /**
-     * Convert to array format.
+     * Convert to array format (for the HyperFields option shape).
+     *
+     * @return array<string,mixed>
      */
     public function toArray(): array
     {

@@ -1,4 +1,5 @@
 <?php
+
 declare(strict_types=1);
 
 namespace WicketImporter\Admin;
@@ -1324,7 +1325,9 @@ class ImportAdminPage
         if (!isset($_GET['session_id'])) {
             return null;
         }
-        $id = sanitize_key(wp_unslash($_GET['session_id']));
+        // Nit#5: preserve case (sanitize_key lowercases); the REST route regex
+        // accepts A-F, and SESSION_ID_PATTERN below enforces the UUID format.
+        $id = sanitize_text_field(wp_unslash($_GET['session_id']));
 
         return preg_match(self::SESSION_ID_PATTERN, $id) === 1 ? $id : null;
     }

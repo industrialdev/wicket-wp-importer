@@ -166,38 +166,11 @@ class ImportStagingTable
      * import_status (imported, updated, skipped, failed, email_conflict,
      * skipped_active_membership, needs_review) on a prior run.
      *
-     * Mirrors getImportableRowsBySession's filter, but returns the columns
-     * runConflictCheck needs (which is the only caller). For the row loop
-     * that needs every column on importable rows, see getImportableRowsBySession.
+     * The only caller is runConflictCheck, which needs every column.
      *
      * @return list<array<string,mixed>>
      */
     public function getValidBySession(string $session_id): array
-    {
-        global $wpdb;
-        $rows = $wpdb->get_results(
-            $wpdb->prepare(
-                "SELECT * FROM {$this->table_name} WHERE session_id = %s AND validation_status IN ('valid', 'warning') AND import_status = 'pending' ORDER BY row_index ASC",
-                $session_id
-            ),
-            ARRAY_A
-        );
-
-        return is_array($rows) ? array_values($rows) : [];
-    }
-
-    /**
-     * Get rows in a session that the destructive import phase will actually
-     * process: validation_status IN ('valid', 'warning') AND import_status = 'pending'.
-     *
-     * Distinct from getValidBySession() (which only filters on validation_status).
-     * Required for Task 12.4 so a re-run of runImport skips rows that already
-     * moved to a terminal import_status on a previous run (imported, updated,
-     * skipped, failed, email_conflict, skipped_active_membership, needs_review).
-     *
-     * @return list<array<string,mixed>>
-     */
-    public function getImportableRowsBySession(string $session_id): array
     {
         global $wpdb;
         $rows = $wpdb->get_results(
@@ -376,20 +349,20 @@ class ImportStagingTable
     }
 
     /**
-     * Check if any session has pending (unfinished) rows.
-     * A completed session (all rows imported/updated/skipped/failed/phase2_complete) does NOT block.
+     * The session_id of any session with pending (unfinished) rows, or null when
+     * none. Used by the upload concurrency gate so the 409 can name the blocking
+     * session (S2) and the admin can clear the right one. A session whose rows
+     * are all terminal does NOT block.
      */
-    public function hasActiveSession(): bool
+    public function hasActiveSession(): ?string
     {
         global $wpdb;
-        $count = (int) $wpdb->get_var(
-            $wpdb->prepare(
-                "SELECT COUNT(*) FROM {$this->table_name} WHERE import_status = %s",
-                'pending'
-            )
+        // 'pending'/'session_id' are literals (no user input), so no prepare needed.
+        $session_id = $wpdb->get_var(
+            "SELECT session_id FROM {$this->table_name} WHERE import_status = 'pending' LIMIT 1"
         );
 
-        return $count > 0;
+        return (is_string($session_id) && $session_id !== '') ? $session_id : null;
     }
 
     /**

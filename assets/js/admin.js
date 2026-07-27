@@ -232,7 +232,6 @@
 				}
 				var url = uploadBtn.dataset.uploadUrl;
 				var validationUrl = uploadBtn.dataset.validationUrl;
-				var originalText = uploadBtn.textContent;
 
 				setBusy(true);
 				// S1: no empty-info notice here. Stale errors are cleared by the
@@ -401,7 +400,7 @@
 		return (bytes / Math.pow(1024, i)).toFixed(i === 0 ? 0 : 1) + ' ' + units[i];
 	}
 
-	// TODO Task 9.3: Restart button -> DELETE /session/{id} -> redirect to upload.
+	// bindRestartButton() (Task 9.3) implements the Restart -> DELETE /session/{id} flow.
 
 	// ------------------------------------------------------------------
 	// Task 11.3 + 11.4: Individual form submit -> validate + import -> confirmation

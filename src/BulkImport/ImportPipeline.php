@@ -5,11 +5,6 @@ declare(strict_types=1);
 namespace WicketImporter\BulkImport;
 
 use WicketImporter\Services\Logger;
-use WicketImporter\Support\DefaultColumns;
-use WicketImporter\ValueObjects\ColumnDefinition;
-use WicketImporter\ValueObjects\CsvRow;
-use WicketImporter\ValueObjects\ValidationResult;
-use WicketImporter\ValueObjects\ValidationSummary;
 use WicketImporter\WicketImporter as Plugin;
 
 /**
@@ -20,29 +15,21 @@ use WicketImporter\WicketImporter as Plugin;
  * WicketCheque\BatchProcessor (Phase 4-5) because it needs Action Scheduler chunking.
  *
  * Phases:
- *   1. runValidation($sessionId)    Re-run the validation pipeline over every
- *                                   staged row and persist the fresh verdicts.
- *                                   Necessary because extension validators may
- *                                   have changed between upload and processing.
- *   2. runConflictCheck($sessionId) READ-ONLY MDP pre-pass: for each valid row,
+ *   1. runConflictCheck($sessionId) READ-ONLY MDP pre-pass: for each valid row,
  *                                   look up the email and classify exact vs
  *                                   partial match. Writes mdp_uuid for exact
  *                                   matches and marks email_conflict rows so
  *                                   they are NOT auto-processed. No create/merge.
- *   3. runImport($sessionId)        The destructive phase: resolve each pending
+ *   2. runImport($sessionId)        The destructive phase: resolve each pending
  *                                   valid row to an MDP person (Scenario A/B via
  *                                   PersonResolver) and create the membership
- *                                   (ImportAdapter). [Per-row loop = Task 12.4.]
+ *                                   (ImportAdapter).
  *
  * Per-row error handling (12.1): every row is isolated. A failure marks that row
  * `failed` and the batch continues; nothing in one row's pipeline can halt the
  * session. runImport additionally raises PHP's time + abort limits and caps the
  * session size at WICKET_IMPORT_INLINE_MAX_ROWS (200) since this phase runs
  * inline on the request thread.
- *
- * This class performs NO membership creation itself (12.4 is not yet wired);
- * runImport is currently the guard + timing shell. The row loop + ImportAdapter
- * hand-off lands with Task 12.4.
  *
  * @see docs/engineering/import-pipeline.md
  * @see PersonResolver  checkConflict() + resolve().
@@ -53,78 +40,6 @@ final class ImportPipeline
         private readonly Logger $logger,
         private readonly PersonResolver $personResolver
     ) {}
-
-    /**
-     * Phase 1 (Task 12.2): re-validate every row in the session and persist the
-     * fresh verdicts to the staging table.
-     *
-     * Rows are reconstructed from staged raw_data into CsvRow value objects,
-     * run through the same ValidationService + column registry the upload used,
-     * and each row's validation_status / message / flagged_fields is rewritten.
-     * This makes the pipeline robust to extension validator changes between
-     * upload and run.
-     *
-     * @param string $sessionId Session to re-validate.
-     *
-     * @return ValidationSummary The authoritative summary (results map + counts).
-     */
-    public function runValidation(string $sessionId): ValidationSummary
-    {
-        $plugin = Plugin::get_instance();
-        $staging = $plugin->StagingTable();
-        $rowsData = $staging->getBySession($sessionId);
-
-        // Skip rows that have already moved past validation into the import
-        // lifecycle. Re-validating a row that is already imported/failed would
-        // rewrite its validation_status and desync the UI (imported row showing
-        // a stale validation verdict). Only pre-import rows are re-validated.
-        $csvRows = [];
-        $byIndex = [];
-        foreach ($rowsData as $row) {
-            // B8: re-validate ONLY rows still awaiting import (import_status =
-            // 'pending'). The prior terminal-status allow-list missed
-            // needs_review / skipped_active_membership / expired /
-            // phase*_complete / processing, so it rewrote validation verdicts
-            // on rows already past validation (desync the UI) and could touch
-            // rows an in-flight /run is mid-way through.
-            if ((string) ($row['import_status'] ?? '') !== 'pending') {
-                continue;
-            }
-            $csvRows[] = $this->csvRowFromStaged($row);
-            $byIndex[(int) $row['row_index']] = (int) $row['id'];
-        }
-
-        $columns = $this->resolveColumns();
-        $summary = $plugin->Validation()->validateBatch($csvRows, $columns);
-
-        // Persist the fresh verdict for every re-validated row. The authoritative
-        // state is $summary->results (rowIndex => ValidationResult).
-        foreach ($summary->results as $rowIndex => $result) {
-            $stagingId = $byIndex[$rowIndex] ?? null;
-            if ($stagingId === null) {
-                continue;
-            }
-            $staging->updateValidationResult(
-                $stagingId,
-                $result->status,
-                $result->message,
-                $result->flaggedFields
-            );
-        }
-
-        $this->logger->info(
-            'runValidation complete.',
-            [
-                'session_id'  => $sessionId,
-                'total'       => $summary->total,
-                'valid'       => $summary->validCount,
-                'flagged'     => count($summary->flagged),
-                'duplicates'  => count($summary->duplicates),
-            ]
-        );
-
-        return $summary;
-    }
 
     /**
      * Phase 2 (Task 12.3): READ-ONLY MDP conflict pre-pass.
@@ -152,7 +67,7 @@ final class ImportPipeline
      *
      * @param string $sessionId Session to check.
      *
-     * @return array{checked:int, exact:int, partial:int, none:int} Per-session tally.
+     * @return array{checked:int, exact:int, partial:int, none:int, error:int} Per-session tally.
      */
     public function runConflictCheck(string $sessionId): array
     {
@@ -271,14 +186,11 @@ final class ImportPipeline
      *   - Duration is timed and logged for capacity planning.
      *
      * @param string $sessionId      Session to import.
-     * @param bool   $skipFlagged    When true, rows flagged at validation are
-     *                               skipped (default). The inline cap already
-     *                               excludes them; this is the public contract.
      *
      * @return array{summary:array<string,int>, duration_sec:float}|\WP_Error
      *               Tally on completion, WP_Error if the cap guard rejects.
      */
-    public function runImport(string $sessionId, bool $skipFlagged = true): \WP_Error|array
+    public function runImport(string $sessionId): \WP_Error|array
     {
         $started = microtime(true);
 
@@ -511,7 +423,6 @@ final class ImportPipeline
             'duration_sec'   => $duration,
             'rows_processed' => $tally['total'],
             'summary'        => $tally,
-            'skip_flagged'   => $skipFlagged,
         ]);
 
         return ['summary' => $tally, 'duration_sec' => $duration];
@@ -520,43 +431,6 @@ final class ImportPipeline
     // ---------------------------------------------------------------------
     // Helpers
     // ---------------------------------------------------------------------
-
-    /**
-     * Resolve the column registry via the same filter the upload controller
-     * uses (wicket_import_csv_columns). runValidation must use the identical
-     * column set so re-validation is consistent with the initial pass.
-     *
-     * @return list<ColumnDefinition>
-     */
-    private function resolveColumns(): array
-    {
-        /** @var list<ColumnDefinition> $columns */
-        $columns = apply_filters('wicket_import_csv_columns', [], ['context' => 'bulk']);
-
-        // Core always contributes the baseline identity columns and layers the
-        // extension's domain columns on top, so the re-validation pass is
-        // consistent with the upload pass. See DefaultColumns::mergeWith().
-        return DefaultColumns::mergeWith(is_array($columns) ? $columns : []);
-    }
-
-    /**
-     * Reconstruct a CsvRow from a staged DB row. raw_data is the keyed column
-     * map written at upload time; rowData (positional cells) is not stored, so
-     * it is left empty — validators read keyed values via CsvRow::data, not
-     * rawData.
-     *
-     * @param array $staged One row from ImportStagingTable::getBySession().
-     */
-    private function csvRowFromStaged(array $staged): CsvRow
-    {
-        $data = $this->decodeRawData($staged);
-
-        return new CsvRow(
-            (int) ($staged['row_index'] ?? 0),
-            $data,
-            []
-        );
-    }
 
     /**
      * Decode the raw_data JSON blob stored on a staged row. Centralized so both

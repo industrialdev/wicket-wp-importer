@@ -98,12 +98,9 @@ final class BundleRenewalSubscriber
         // B4: single-channel per D-LOCKBOX-2 (core ignores the return), but pass
         // $override through unchanged so this callback never clobbers the value
         // a prior subscriber set for the next one in the filter chain.
-        if (is_object($renewalOrder) && is_object($item)) {
+        if (is_object($renewalOrder)) {
             $this->mappingResolver->applyLineItemAdjustments(
-                $item,
-                $itemId,
                 $membershipPostId,
-                $userId,
                 $renewalOrder
             );
         }

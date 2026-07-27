@@ -61,10 +61,7 @@ final class MappingResolver
      * @param object $renewalOrder       The full renewal order (WC_Order).
      */
     public function applyLineItemAdjustments(
-        object $item,
-        int $itemId,
         int $membershipPostId,
-        int $userId,
         object $renewalOrder,
     ): void {
         // Filter #3 fires once PER line item, but late-fee + discount tallies are
@@ -75,7 +72,7 @@ final class MappingResolver
             return;
         }
 
-        $role = $this->memberRole($membershipPostId);
+        $role = self::memberRole($membershipPostId);
         if ($role === '') {
             return;
         }
@@ -187,9 +184,10 @@ final class MappingResolver
 
     /**
      * The member's mapping role: the wicket_mship_tier post slug (post_name).
-     * Role equality against MappingEntry::roleSlug is the match key.
+     * Shared by MappingResolver + ProductResolver (S5) so the role resolution
+     * lives in one place and cannot drift between the two.
      */
-    private function memberRole(int $membershipPostId): string
+    public static function memberRole(int $membershipPostId): string
     {
         $tierPostId = (int) get_post_meta($membershipPostId, 'membership_tier_post_id', true);
         if ($tierPostId === 0) {

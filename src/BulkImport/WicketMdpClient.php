@@ -100,7 +100,7 @@ final class WicketMdpClient
             return new \WP_Error('mdp_lookup_unavailable', 'Wicket API client is not available.');
         }
         try {
-            $response = $client->get('/people?filter[emails_address_eq]=' . rawurlencode($email));
+            $response = $client->get('people?filter[emails_address_eq]=' . rawurlencode($email));
         } catch (\Throwable $e) {
             $this->logger->error('Secondary person lookup failed.', ['email' => $email, 'error' => $e->getMessage()]);
 

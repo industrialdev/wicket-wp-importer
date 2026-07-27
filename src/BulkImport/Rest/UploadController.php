@@ -135,11 +135,13 @@ final class UploadController
         // Concurrency gate (plan DB-schema): the active-session check fires before
         // each upload so two uploads can't interleave pending rows. Reject with 409
         // until the prior session is cleared (DELETE /session/{id}) or finishes.
-        if (Plugin::get_instance()->StagingTable()->hasActiveSession()) {
+        $activeSession = Plugin::get_instance()->StagingTable()->hasActiveSession();
+        if ($activeSession !== null) {
             return $this->error(
                 'import_session_active',
                 __('An import session is already in progress. Clear or complete it before starting a new upload.', 'wicket-wp-importer'),
-                409
+                409,
+                ['blocking_session_id' => $activeSession]
             );
         }
 
@@ -277,12 +279,6 @@ final class UploadController
      * session at WICKET_IMPORT_INLINE_MAX_ROWS (200). When that cap is hit the
      * endpoint returns 413 import_too_many_rows so the client can guide the
      * admin to a smaller batch.
-     *
-     * Note: runValidation (12.2) is NOT called here — it is a separate
-     * defensive re-pass invoked explicitly when an extension has changed its
-     * validators. The validation that produced the current staging verdicts
-     * happened at upload time and is what the admin reviewed on the
-     * validation screen.
      *
      * @return WP_REST_Response|WP_Error 200 with summary; 404 if the session
      *         has no rows; 413 if the session exceeds the inline cap; 500 on
@@ -446,6 +442,18 @@ final class UploadController
      */
     public function handleIndividual(WP_REST_Request $request)
     {
+        // S3: honor the same concurrency gate as bulk upload — a pending session
+        // should block an individual add too.
+        $activeSession = Plugin::get_instance()->StagingTable()->hasActiveSession();
+        if ($activeSession !== null) {
+            return $this->error(
+                'import_session_active',
+                __('An import session is already in progress. Clear or complete it before adding a member.', 'wicket-wp-importer'),
+                409,
+                ['blocking_session_id' => $activeSession]
+            );
+        }
+
         $fields = $request->get_json_params();
         if (!is_array($fields) || $fields === []) {
             return $this->error('import_no_fields', __('No form fields received.', 'wicket-wp-importer'), 400);
