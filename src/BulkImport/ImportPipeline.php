@@ -31,7 +31,7 @@ use WicketImporter\WicketImporter as Plugin;
  * session size at WICKET_IMPORT_INLINE_MAX_ROWS (200) since this phase runs
  * inline on the request thread.
  *
- * @see docs/engineering/import-pipeline.md
+ * @see atlas/packages/wicket-wp-importer/import-pipeline.md
  * @see PersonResolver  checkConflict() + resolve().
  */
 final class ImportPipeline

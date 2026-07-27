@@ -40,7 +40,7 @@ use WicketImporter\Services\Logger;
  *
  * @see AD11     Pre-create filter for MDP person payload.
  * @see AD15     MDP integration priority ladder.
- * @see docs/engineering/import-pipeline.md
+ * @see atlas/packages/wicket-wp-importer/import-pipeline.md
  */
 final class WicketMdpClient
 {

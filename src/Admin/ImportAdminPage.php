@@ -33,7 +33,7 @@ use WicketImporter\WicketImporter as Plugin;
  * BOTH the upload screen and the confirmation screen (re-fired so post-import
  * state is reflected, e.g. OBA's "Next Bar ID").
  *
- * @see docs/engineering/rest-endpoints.md
+ * @see atlas/packages/wicket-wp-importer/architecture.md (REST endpoints documented there)
  */
 class ImportAdminPage
 {

@@ -13,7 +13,7 @@ use Wicket_Memberships\Utilities;
  * Creates the wicket_membership CPT for one import row by delegating to the
  * canonical wicket-wp-memberships pipeline.
  *
- * Design (see docs/engineering/architecture.md AD1, AD10, AD15; docs/engineering/import-pipeline.md):
+ * Design (see atlas/packages/wicket-wp-importer/architecture.md AD1, AD10, AD15; atlas/packages/wicket-wp-importer/import-pipeline.md):
  *  - Core stays generic. This adapter owns NO client domain logic; per-tenant
  *    behaviour arrives through the wicket_import_* filters/actions it fires.
  *  - Per AD10 the adapter never calls the WC Subscriptions API. It fires
