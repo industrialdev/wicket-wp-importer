@@ -68,4 +68,21 @@ final readonly class MappingEntry
             'sort_order'       => $this->sortOrder,
         ];
     }
+
+    /**
+     * G4: resolve the concrete WC product id, preferring SKU (env-portable
+     * per D-LOCKBOX-1) and falling back to the stored product_id. Returns null
+     * when neither resolves to a real product.
+     */
+    public function resolveProductId(): ?int
+    {
+        if (!empty($this->productSku) && function_exists('wc_get_product_id_by_sku')) {
+            $by_sku = (int) \wc_get_product_id_by_sku($this->productSku);
+            if ($by_sku > 0) {
+                return $by_sku;
+            }
+        }
+
+        return ($this->productId !== null && $this->productId > 0) ? $this->productId : null;
+    }
 }

@@ -125,7 +125,7 @@ final class ProductResolver
         }
 
         $entries = $this->mappingResolver()->mappingsForRole($role)['late_fees'] ?? [];
-        $ids = array_map(static fn ($e): int => (int) ($e->productId ?? 0), $entries);
+        $ids = array_map(static fn ($e): int => (int) ($e->resolveProductId() ?? 0), $entries);
 
         return array_values(array_filter($ids, static fn (int $id): bool => $id > 0));
     }

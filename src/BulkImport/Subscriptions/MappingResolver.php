@@ -151,7 +151,7 @@ final class MappingResolver
     {
         foreach ($matched['late_fees'] as $fee) {
             try {
-                $product = $this->product($fee->productId);
+                $product = $this->product($fee->resolveProductId());
                 if ($product === null) {
                     $this->logger?->warning('Late-fee product missing; skipping line.', ['role' => $fee->roleSlug, 'product_id' => $fee->productId]);
                     continue;
@@ -172,7 +172,7 @@ final class MappingResolver
                 }
                 // 'product' discount: add the product line (the product's own
                 // price carries the negative/discount value).
-                $product = $this->product($discount->productId);
+                $product = $this->product($discount->resolveProductId());
                 if ($product !== null) {
                     $renewalOrder->add_product($product, 1);
                 }

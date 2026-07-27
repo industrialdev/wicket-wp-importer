@@ -50,6 +50,7 @@ class MappingSettings
                 'coupon'  => 'WooCommerce Coupon',
             ])->setDefault('product'),
             HyperFields::makeField('text', 'product_id', 'WC Product ID'),
+            HyperFields::makeField('text', 'product_sku', 'Product SKU'),
             HyperFields::makeField('text', 'coupon_code', 'Coupon Code'),
             HyperFields::makeField('text', 'label', 'Label'),
             HyperFields::makeField('checkbox', 'is_active', 'Active')->setDefault(true),
@@ -63,6 +64,7 @@ class MappingSettings
         $sections_repeater->addSubFields([
             HyperFields::makeField('text', 'role_slug', 'MDP Group/Section Slug'),
             HyperFields::makeField('text', 'product_id', 'WC Product ID'),
+            HyperFields::makeField('text', 'product_sku', 'Product SKU'),
             HyperFields::makeField('text', 'label', 'Label'),
             HyperFields::makeField('checkbox', 'is_active', 'Active')->setDefault(true),
         ]);
