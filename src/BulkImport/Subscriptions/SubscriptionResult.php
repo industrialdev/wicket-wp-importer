@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace WicketCheque;
+namespace WicketImporter\BulkImport\Subscriptions;
 
 /**
  * Outcome of SubscriptionCreator::create() for one cheque-renewal row.

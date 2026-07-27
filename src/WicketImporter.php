@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace WicketImporter;
 
-use WicketCheque\BundleRenewalSubscriber;
+use WicketImporter\BulkImport\Subscriptions\BundleRenewalSubscriber;
 use WicketImporter\BulkImport\Database\ImportStagingTable;
 
 /**
@@ -121,7 +121,10 @@ final class WicketImporter
         // wicket-wp-memberships (decision D-LOCKBOX-2, PULL architecture).
         new BundleRenewalSubscriber($logger);
 
-        // TODO Phase 4: WicketCheque\BatchProcessor, WicketCheque\Rest\ProcessController
+        // TODO Phase 4: WicketImporter\BulkImport\Subscriptions\BatchProcessor (the
+        // generic subscriptions-state engine + G3 writer; the cheque loop is a
+        // configured adapter under Subscriptions\Cheque\),
+        // WicketImporter\BulkImport\Subscriptions\Cheque\Rest\ProcessController.
     }
 
     /**

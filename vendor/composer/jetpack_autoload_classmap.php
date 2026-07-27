@@ -294,38 +294,6 @@ return array(
 		'version' => '2.12.0',
 		'path'    => $vendorDir . '/automattic/jetpack-autoloader/src/class-version-selector.php'
 	),
-	'WicketCheque\\BundleRenewalSubscriber' => array(
-		'version' => 'dev-main',
-		'path'    => $baseDir . '/src/Cheque/BundleRenewalSubscriber.php'
-	),
-	'WicketCheque\\MappingResolver' => array(
-		'version' => 'dev-main',
-		'path'    => $baseDir . '/src/Cheque/MappingResolver.php'
-	),
-	'WicketCheque\\ProductResolver' => array(
-		'version' => 'dev-main',
-		'path'    => $baseDir . '/src/Cheque/ProductResolver.php'
-	),
-	'WicketCheque\\ResolvedProducts' => array(
-		'version' => 'dev-main',
-		'path'    => $baseDir . '/src/Cheque/ResolvedProducts.php'
-	),
-	'WicketCheque\\SectionResolver' => array(
-		'version' => 'dev-main',
-		'path'    => $baseDir . '/src/Cheque/SectionResolver.php'
-	),
-	'WicketCheque\\SubscriptionCreator' => array(
-		'version' => 'dev-main',
-		'path'    => $baseDir . '/src/Cheque/SubscriptionCreator.php'
-	),
-	'WicketCheque\\SubscriptionResult' => array(
-		'version' => 'dev-main',
-		'path'    => $baseDir . '/src/Cheque/SubscriptionResult.php'
-	),
-	'WicketCheque\\TierResolver' => array(
-		'version' => 'dev-main',
-		'path'    => $baseDir . '/src/Cheque/TierResolver.php'
-	),
 	'WicketImporter\\Admin\\ImportAdminPage' => array(
 		'version' => 'dev-main',
 		'path'    => $baseDir . '/src/Admin/ImportAdminPage.php'
@@ -373,6 +341,38 @@ return array(
 	'WicketImporter\\BulkImport\\Rest\\UploadController' => array(
 		'version' => 'dev-main',
 		'path'    => $baseDir . '/src/BulkImport/Rest/UploadController.php'
+	),
+	'WicketImporter\\BulkImport\\Subscriptions\\BundleRenewalSubscriber' => array(
+		'version' => 'dev-main',
+		'path'    => $baseDir . '/src/BulkImport/Subscriptions/BundleRenewalSubscriber.php'
+	),
+	'WicketImporter\\BulkImport\\Subscriptions\\Cheque\\SubscriptionCreator' => array(
+		'version' => 'dev-main',
+		'path'    => $baseDir . '/src/BulkImport/Subscriptions/Cheque/SubscriptionCreator.php'
+	),
+	'WicketImporter\\BulkImport\\Subscriptions\\MappingResolver' => array(
+		'version' => 'dev-main',
+		'path'    => $baseDir . '/src/BulkImport/Subscriptions/MappingResolver.php'
+	),
+	'WicketImporter\\BulkImport\\Subscriptions\\ProductResolver' => array(
+		'version' => 'dev-main',
+		'path'    => $baseDir . '/src/BulkImport/Subscriptions/ProductResolver.php'
+	),
+	'WicketImporter\\BulkImport\\Subscriptions\\ResolvedProducts' => array(
+		'version' => 'dev-main',
+		'path'    => $baseDir . '/src/BulkImport/Subscriptions/ResolvedProducts.php'
+	),
+	'WicketImporter\\BulkImport\\Subscriptions\\SectionResolver' => array(
+		'version' => 'dev-main',
+		'path'    => $baseDir . '/src/BulkImport/Subscriptions/SectionResolver.php'
+	),
+	'WicketImporter\\BulkImport\\Subscriptions\\SubscriptionResult' => array(
+		'version' => 'dev-main',
+		'path'    => $baseDir . '/src/BulkImport/Subscriptions/SubscriptionResult.php'
+	),
+	'WicketImporter\\BulkImport\\Subscriptions\\TierResolver' => array(
+		'version' => 'dev-main',
+		'path'    => $baseDir . '/src/BulkImport/Subscriptions/TierResolver.php'
 	),
 	'WicketImporter\\BulkImport\\ValidationService' => array(
 		'version' => 'dev-main',

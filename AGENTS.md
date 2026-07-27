@@ -22,7 +22,7 @@ This is a WordPress plugin rooted at `wicket-wp-importer.php`.
 
 ## Architectural rules (load-bearing)
 - **AD1**: The importer plugin owns all domain execution — validation, MDP mapping, membership/subscription/order creation, and the cheque/lockbox flow (`src/Cheque/`). Client themes supply only configuration/rules/data (tier maps, code lists, field→MDP-path mappings, column registration) that the importer's generic engines consume; no client-specific *logic* belongs in a child theme. (Supersedes the prior "no cheque/order/subscription in core" wording — that is now a core importer capability. Generalizes the D-LOCKBOX-1 engine/map split to the whole importer.)
-- **AD10**: The importer is the actor for subscription/order creation and may call the WC Subscriptions API directly (e.g. `WicketCheque\SubscriptionCreator`). The `ImportAdapter` path still fires `wicket_import_create_subscription` so extensions can react/adjust — not create.
+- **AD10**: The importer is the actor for subscription/order creation and may call the WC Subscriptions API directly (e.g. `WicketImporter\BulkImport\Subscriptions\Cheque\SubscriptionCreator`). The `ImportAdapter` path still fires `wicket_import_create_subscription` so extensions can react/adjust — not create.
 - **AD14**: Every CSV export goes through `Support\CsvExporter` (injection prevention).
 - **AD15**: MDP integration priority ladder — reuse `wicket-wp-memberships` → `wicket-wp-base-plugin` → `wicket-wp-account-centre` → direct MDP API (last resort; document WHY at the call site).
 

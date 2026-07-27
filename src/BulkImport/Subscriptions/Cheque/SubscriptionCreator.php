@@ -2,9 +2,11 @@
 
 declare(strict_types=1);
 
-namespace WicketCheque;
+namespace WicketImporter\BulkImport\Subscriptions\Cheque;
 
 use WicketImporter\BulkImport\MemberData;
+use WicketImporter\BulkImport\Subscriptions\SubscriptionResult;
+use WicketImporter\BulkImport\Subscriptions\ResolvedProducts;
 use WicketImporter\Services\Logger;
 
 /**

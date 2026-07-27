@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace WicketCheque;
+namespace WicketImporter\BulkImport\Subscriptions;
 
 /**
  * The set of WC products a single cheque-renewal row resolves to, plus the

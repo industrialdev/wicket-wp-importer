@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace WicketCheque;
+namespace WicketImporter\BulkImport\Subscriptions;
 
 use WicketImporter\Services\Logger;
 
