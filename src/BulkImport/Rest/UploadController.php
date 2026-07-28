@@ -34,6 +34,7 @@ use WP_REST_Response;
  *   GET    /import/session/{id}/results-csv    Full results CSV (AD14).
  *   GET    /import/session/{id}/source-csv    Retained source CSV download.
  *   POST   /import/session/{id}/run            Conflict pre-pass + destructive import.
+ *   POST   /import/cheque/session/{id}/run   Trigger the cheque bulk-create batch (Action Scheduler).
  *   DELETE /import/session/{id}                Clear the session.
  *
  * Size enforcement is delegated to FileParserService (single enforcement point,
@@ -90,6 +91,12 @@ final class UploadController
         register_rest_route($namespace, $sessionBase . '/run', [
             'methods'             => 'POST',
             'callback'            => [$this, 'handleRun'],
+            'permission_callback' => $permission,
+        ]);
+
+        register_rest_route($namespace, '/import/cheque/session/' . self::SESSION_ID_PATTERN . '/run', [
+            'methods'             => 'POST',
+            'callback'            => [$this, 'handleChequeRun'],
             'permission_callback' => $permission,
         ]);
 
@@ -605,6 +612,88 @@ final class UploadController
         // entries win on canonical-key collision so a client can intentionally
         // redefine a baseline column. See DefaultColumns::mergeWith().
         return DefaultColumns::mergeWith(is_array($columns) ? $columns : []);
+    }
+
+    /**
+     * POST /import/cheque/session/{id}/run — trigger the cheque bulk-create batch.
+     *
+     * Enqueues staged cheque rows onto Action Scheduler via
+     * BatchProcessor::startBatch (single-chain chunks); unlike the member /run
+     * (inline ImportPipeline), this returns immediately with a batch_id. The
+     * cheque upload (column-shaped staging) is a separate endpoint (TODO).
+     *
+     * @return WP_REST_Response|WP_Error
+     */
+    public function handleChequeRun(WP_REST_Request $request)
+    {
+        $sessionId = (string) ($request['id'] ?? '');
+        $plugin = Plugin::get_instance();
+        $staging = $plugin->StagingTable();
+
+        $total = array_sum($staging->getValidationSummary($sessionId));
+        if ($total === 0) {
+            return $this->error(
+                'import_session_not_found',
+                __('No staged rows found for this session.', 'wicket-wp-importer'),
+                404
+            );
+        }
+
+        $userId = get_current_user_id();
+
+        $batchId = $plugin->BatchProcessor()->startBatch(
+            $sessionId,
+            (string) ($request->get_param('filename') ?? __('Cheque renewal import', 'wicket-wp-importer')),
+            $userId > 0 ? $userId : 0,
+            $total
+        );
+
+        return new WP_REST_Response([
+            'session_id' => $sessionId,
+            'batch_id'   => $batchId,
+        ], 200);
+    }
+
+    /**
+     * Resolve the cheque-flow column set. Generic lockbox fields (order_total,
+     * check_id) live in core; a client adds its member identifier (OBA: bar_id)
+     * via the wicket_import_cheque_columns filter. NOT merged with the identity
+     * columns: the cheque flow resolves the customer via
+     * wicket_import_resolve_order_customer, not from first_name/email.
+     *
+     * @return list<ColumnDefinition>
+     */
+    private function resolveChequeColumns(): array
+    {
+        /** @var list<ColumnDefinition> $columns */
+        $columns = apply_filters('wicket_import_cheque_columns', $this->defaultChequeColumns(), ['context' => 'cheque']);
+
+        return is_array($columns) ? $columns : [];
+    }
+
+    /**
+     * The generic lockbox columns every cheque CSV carries. The member
+     * identifier (bar_id for OBA) is intentionally NOT here — core is agnostic
+     * to it (AD1); the client supplies it via wicket_import_cheque_columns.
+     *
+     * @return list<ColumnDefinition>
+     */
+    private function defaultChequeColumns(): array
+    {
+        return [
+            new ColumnDefinition(
+                key: 'order_total',
+                label: __('Order Total', 'wicket-wp-importer'),
+                required: true,
+                validators: [['type' => 'required']],
+            ),
+            new ColumnDefinition(
+                key: 'check_id',
+                label: __('Check #', 'wicket-wp-importer'),
+                required: true,
+                validators: [['type' => 'required']],
+            ),
+        ];
     }
 
     /**
