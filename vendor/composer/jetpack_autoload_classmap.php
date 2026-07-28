@@ -342,17 +342,29 @@ return array(
 		'version' => 'dev-main',
 		'path'    => $baseDir . '/src/BulkImport/Rest/UploadController.php'
 	),
+	'WicketImporter\\BulkImport\\Subscriptions\\BatchProcessor' => array(
+		'version' => 'dev-main',
+		'path'    => $baseDir . '/src/BulkImport/Subscriptions/BatchProcessor.php'
+	),
 	'WicketImporter\\BulkImport\\Subscriptions\\BundleRenewalSubscriber' => array(
 		'version' => 'dev-main',
 		'path'    => $baseDir . '/src/BulkImport/Subscriptions/BundleRenewalSubscriber.php'
 	),
-	'WicketImporter\\BulkImport\\Subscriptions\\Cheque\\SubscriptionCreator' => array(
+	'WicketImporter\\BulkImport\\Subscriptions\\Cheque\\ChequeRowProcessor' => array(
 		'version' => 'dev-main',
-		'path'    => $baseDir . '/src/BulkImport/Subscriptions/Cheque/SubscriptionCreator.php'
+		'path'    => $baseDir . '/src/BulkImport/Subscriptions/Cheque/ChequeRowProcessor.php'
 	),
 	'WicketImporter\\BulkImport\\Subscriptions\\MappingResolver' => array(
 		'version' => 'dev-main',
 		'path'    => $baseDir . '/src/BulkImport/Subscriptions/MappingResolver.php'
+	),
+	'WicketImporter\\BulkImport\\Subscriptions\\OrderCreator' => array(
+		'version' => 'dev-main',
+		'path'    => $baseDir . '/src/BulkImport/Subscriptions/OrderCreator.php'
+	),
+	'WicketImporter\\BulkImport\\Subscriptions\\OrderResult' => array(
+		'version' => 'dev-main',
+		'path'    => $baseDir . '/src/BulkImport/Subscriptions/OrderResult.php'
 	),
 	'WicketImporter\\BulkImport\\Subscriptions\\ProductResolver' => array(
 		'version' => 'dev-main',
@@ -362,9 +374,21 @@ return array(
 		'version' => 'dev-main',
 		'path'    => $baseDir . '/src/BulkImport/Subscriptions/ResolvedProducts.php'
 	),
+	'WicketImporter\\BulkImport\\Subscriptions\\RowProcessor' => array(
+		'version' => 'dev-main',
+		'path'    => $baseDir . '/src/BulkImport/Subscriptions/RowProcessor.php'
+	),
+	'WicketImporter\\BulkImport\\Subscriptions\\RowResult' => array(
+		'version' => 'dev-main',
+		'path'    => $baseDir . '/src/BulkImport/Subscriptions/RowResult.php'
+	),
 	'WicketImporter\\BulkImport\\Subscriptions\\SectionResolver' => array(
 		'version' => 'dev-main',
 		'path'    => $baseDir . '/src/BulkImport/Subscriptions/SectionResolver.php'
+	),
+	'WicketImporter\\BulkImport\\Subscriptions\\SubscriptionCreator' => array(
+		'version' => 'dev-main',
+		'path'    => $baseDir . '/src/BulkImport/Subscriptions/SubscriptionCreator.php'
 	),
 	'WicketImporter\\BulkImport\\Subscriptions\\SubscriptionResult' => array(
 		'version' => 'dev-main',

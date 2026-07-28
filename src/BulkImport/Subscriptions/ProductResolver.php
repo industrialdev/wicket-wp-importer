@@ -25,7 +25,7 @@ use WicketImporter\Services\Logger;
  *   - Divergence tolerance is 0.01 (configurable via the DIVERGENCE_TOLERANCE
  *     constant; make filterable if a client needs it).
  */
-final class ProductResolver
+class ProductResolver
 {
     private const DIVERGENCE_TOLERANCE = 0.01;
 

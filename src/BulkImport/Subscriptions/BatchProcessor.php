@@ -4,19 +4,32 @@ declare(strict_types=1);
 
 namespace WicketImporter\BulkImport\Subscriptions;
 
+use WicketImporter\BulkImport\Database\ImportStagingTable;
 use WicketImporter\Services\Logger;
 
 /**
- * Generic subscriptions-state engine: manages the `wicket_import_batches` row
- * for a /run. G3 (the "batches table has a writer" gap) — the Import History
- * tab can now render real runs.
+ * Generic bulk-import batch engine on Action Scheduler.
  *
- * The per-row processing loop remains the caller's responsibility
- * (`WicketImporter\BulkImport\ImportAdapter` for the OBA bulk path; the
- * cheque loop, once it lands, is a configured adapter under
- * `WicketImporter\BulkImport\Subscriptions\Cheque`). This class only owns
- * the batches-table state for the run: start (insert a running row) and
- * finish (update with the run's final stats).
+ * Owns the per-batch lifecycle: start a run, then process it in bounded chunks
+ * (WICKET_IMPORT_CHUNK_SIZE, filter wicket_import_chunk_size) via a
+ * self-perpetuating AS action (hook wicket_import_process_chunk) until no
+ * importable rows remain. Also writes the wicket_import_batches row so the
+ * Import History tab renders real runs (G3).
+ *
+ * Single-chain model: one chunk action runs at a time per batch (each action
+ * claims its own slice via ImportStagingTable::claimChunk, processes it, then
+ * schedules the next). Concurrent AS runners are not assumed; if enabled
+ * later, claimChunk must return claimed IDs rather than a count.
+ *
+ * The per-row WORK is the adapter's job: processRow() is a Slice-0 placeholder
+ * that marks the row terminal. Slice 2 replaces it with the cheque pipeline
+ * (resolver chain -> OrderCreator -> SubscriptionCreator) and the compensation
+ * behavior on subscription failure (needs_review + retained order_id, no
+ * auto-cancel).
+ *
+ * AS is a runtime dependency via WooCommerce Subscriptions (not vendored here),
+ * so every as_* call is function_exists-guarded and a no-op outside a live
+ * stack; the chain is then driven synchronously by tests.
  */
 final class BatchProcessor
 {
@@ -25,7 +38,14 @@ final class BatchProcessor
      */
     private const TABLE = 'wicket_import_batches';
 
+    /**
+     * Action Scheduler hook a chunk action fires. Registered in
+     * WicketImporter::setup(); the callback is processChunk().
+     */
+    public const CHUNK_HOOK = 'wicket_import_process_chunk';
+
     public function __construct(
+        private readonly ?RowProcessor $rowProcessor = null,
         private readonly ?Logger $logger = null,
     ) {}
 
@@ -97,5 +117,115 @@ final class BatchProcessor
             ['batch_id' => $batchId, 'status' => $status],
             array_intersect_key($stats, array_flip($allowed))
         ));
+    }
+
+    /**
+     * Kick off a batch run: insert the running batches row, then schedule the
+     * first chunk. Returns the batch_id so the caller can track the run.
+     */
+    public function startBatch(string $sessionId, string $csvFilename, int $createdByUserId, int $totalRows): string
+    {
+        $batchId = $this->startRun($sessionId, $csvFilename, $createdByUserId, $totalRows);
+        $this->scheduleNextChunk($batchId, $sessionId);
+
+        return $batchId;
+    }
+
+    /**
+     * Process one chunk of a batch. The wicket_import_process_chunk AS callback.
+     *
+     * Claims up to WICKET_IMPORT_CHUNK_SIZE importable rows, runs processRow on
+     * each (advancing it to a terminal status), then schedules the next chunk.
+     * When claimChunk returns 0 the batch has no importable rows left and is
+     * finished; a false return (DB error) fails the batch closed.
+     */
+    public function processChunk(string $batchId, string $sessionId): void
+    {
+        $staging = new ImportStagingTable();
+        $chunkSize = (int) apply_filters('wicket_import_chunk_size', WICKET_IMPORT_CHUNK_SIZE);
+        $claimed = $staging->claimChunk($sessionId, $chunkSize);
+
+        if ($claimed === false) {
+            $this->logger?->error('claimChunk reported a DB error; failing the batch closed.', [
+                'batch_id' => $batchId, 'session_id' => $sessionId,
+            ]);
+            $this->finishRun($batchId, 'failed', []);
+
+            return;
+        }
+
+        if ($claimed === 0) {
+            // No importable rows remain: the run is complete.
+            $this->finishRun($batchId, 'completed', $this->tally($sessionId, $staging));
+
+            return;
+        }
+
+        foreach ($staging->getProcessingBySession($sessionId) as $row) {
+            $stagingId = (int) ($row['id'] ?? 0);
+            try {
+                $result = $this->processRow($row);
+                $staging->updateImportResult($stagingId, $result->status, $result->message);
+                if ($result->orderId !== null) {
+                    $staging->updateOrderId($stagingId, $result->orderId);
+                }
+            } catch (\Throwable $e) {
+                // Per-row isolation: a throw marks the row failed and the chunk continues.
+                $this->logger?->error('processRow threw; marking the row failed and continuing.', [
+                    'batch_id' => $batchId, 'row_id' => $stagingId, 'error' => $e->getMessage(),
+                ]);
+                $staging->updateImportResult($stagingId, 'failed', 'Chunk processing exception: ' . $e->getMessage());
+            }
+        }
+
+        $this->scheduleNextChunk($batchId, $sessionId);
+    }
+
+    /**
+     * Delegate one row to the injected RowProcessor. Returns the RowProcessor's
+     * outcome (status + optional order_id + message) for processChunk to apply.
+     * With no RowProcessor configured the row fails closed (the engine was
+     * constructed without an adapter).
+     *
+     * @param array<string,mixed> $row Staged row.
+     */
+    private function processRow(array $row): RowResult
+    {
+        if ($this->rowProcessor === null) {
+            return RowResult::failed('No row processor configured for this batch.');
+        }
+
+        return $this->rowProcessor->process($row);
+    }
+
+    /**
+     * Schedule the next chunk action via Action Scheduler. No-op when AS is not
+     * available (unit tests, or a stack without WooCommerce Subscriptions), so
+     * the engine is callable without a live scheduler; tests drive the chain
+     * synchronously by calling processChunk directly.
+     */
+    private function scheduleNextChunk(string $batchId, string $sessionId): void
+    {
+        if (!function_exists('as_schedule_single_action')) {
+            return;
+        }
+
+        \as_schedule_single_action(time(), self::CHUNK_HOOK, [$batchId, $sessionId]);
+    }
+
+    /**
+     * Map a session's import-status summary into finishRun's stats shape.
+     *
+     * @return array<string,int>
+     */
+    private function tally(string $sessionId, ImportStagingTable $staging): array
+    {
+        $s = $staging->getImportSummary($sessionId);
+
+        return [
+            'phase1_succeeded'    => ($s['imported'] ?? 0) + ($s['updated'] ?? 0),
+            'phase1_failed'       => $s['failed'] ?? 0,
+            'phase1_needs_review' => ($s['needs_review'] ?? 0) + ($s['email_conflict'] ?? 0) + ($s['skipped_active_membership'] ?? 0),
+        ];
     }
 }

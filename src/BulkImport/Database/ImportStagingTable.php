@@ -218,6 +218,51 @@ class ImportStagingTable
     }
 
     /**
+     * Atomically claim a bounded chunk of importable rows for Action Scheduler
+     * processing (Slice 0). Transitions up to $limit rows from 'pending' to
+     * 'processing', in row order, scoped to a session.
+     *
+     * This is the chunk-safe counterpart to {@see claimImportableInSession()},
+     * which claims the ENTIRE session (no LIMIT) and is correct only for the
+     * inline single-request path. Under Action Scheduler each chunk action
+     * claims its own bounded slice (ORDER BY row_index ASC LIMIT n) so two
+     * chunks never claim the same rows.
+     *
+     * Single-chain model: BatchProcessor runs one chunk at a time per batch
+     * (self-perpetuating AS actions), so at any moment the only 'processing'
+     * rows in the session are the ones this chunk just claimed; the caller
+     * fetches them via {@see getProcessingBySession()}. If concurrent AS
+     * runners are later enabled, this must return the claimed IDs rather than
+     * a count, so two chunks cannot process the same rows.
+     *
+     * @param string $session_id Session to claim from.
+     * @param int    $limit      Max rows to claim (clamped to >= 1).
+     *
+     * @return int|false Rows claimed (0 = nothing left to claim), or false on DB error.
+     */
+    public function claimChunk(string $session_id, int $limit): int|false
+    {
+        global $wpdb;
+        $limit = max(1, $limit);
+
+        $affected = $wpdb->query(
+            $wpdb->prepare(
+                "UPDATE {$this->table_name}
+                 SET import_status = 'processing'
+                 WHERE session_id = %s
+                   AND validation_status IN ('valid', 'warning')
+                   AND import_status = 'pending'
+                 ORDER BY row_index ASC
+                 LIMIT %d",
+                $session_id,
+                $limit
+            )
+        );
+
+        return is_int($affected) ? $affected : false;
+    }
+
+    /**
      * Check if a session has any rows currently in 'processing' status.
      * True while a /run request is in-flight on the session. Used by
      * handleRun to return 409 import_session_active on re-entry.
@@ -282,6 +327,20 @@ class ImportStagingTable
         $wpdb->update(
             $this->table_name,
             ['mdp_uuid' => $uuid],
+            ['id' => $id]
+        );
+    }
+
+    /**
+     * Write the WC order ID onto a staged row. Used by the cheque compensation
+     * path so a needs_review row retains the order_id an admin must reconcile.
+     */
+    public function updateOrderId(int $id, int $orderId): void
+    {
+        global $wpdb;
+        $wpdb->update(
+            $this->table_name,
+            ['order_id' => $orderId],
             ['id' => $id]
         );
     }

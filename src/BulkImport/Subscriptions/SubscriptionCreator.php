@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace WicketImporter\BulkImport\Subscriptions\Cheque;
+namespace WicketImporter\BulkImport\Subscriptions;
 
 use WicketImporter\BulkImport\MemberData;
 use WicketImporter\BulkImport\Subscriptions\SubscriptionResult;
@@ -39,7 +39,7 @@ use WicketImporter\Services\Logger;
  *      end date is forced (the subscription is open-ended) until the
  *      wicket_mship_config-driven calendar/anniversary end date is wired.
  */
-final class SubscriptionCreator
+class SubscriptionCreator
 {
     public function __construct(
         private readonly ?Logger $logger = null,

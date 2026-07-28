@@ -1,0 +1,4 @@
+First Name,Last Name,Email Address,Address Line 1,City,State,ZIP,Phone,Birthdate,Gender,Membership ID,Membership Tier,Membership Status,Join Date (YMD),Renewal Date (YMD),Practice Area,License Number,License Jurisdiction
+Jane,Doe,jane.doe@example.com,123 Maple Street,Springfield,IL,62704,217-555-0142,1985-03-12,F,APG-100245,Regular,Active,2015-09-01,2026-08-31,Environmental Law,IL-44982,IL
+John,Smith,john.smith@example.com,456 Oak Avenue,Riverfront,CA,90210,310-555-0199,1979-11-05,M,APG-100246,Retired,Active,2002-01-15,2026-12-31,Corporate,CA-22017,CA
+Maria,Garcia,maria.garcia@example.com,789 Pine Road,Lakewood,TX,75024,214-555-0177,1992-07-22,F,APG-100247,Student,Active,2024-08-10,2025-08-09,Family Law,TX-99005,TX

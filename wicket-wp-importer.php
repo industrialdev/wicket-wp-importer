@@ -26,6 +26,7 @@ define('WICKET_IMPORT_REST_NAMESPACE', 'wicket/v1');
 define('WICKET_IMPORT_DEFAULT_MAX_FILE_SIZE', 4194304);  // 4MB
 define('WICKET_IMPORT_INLINE_MAX_ROWS', 200);
 define('WICKET_IMPORT_SESSION_TTL_HOURS', 24);
+define('WICKET_IMPORT_CHUNK_SIZE', 25); // rows per bulk-import Action Scheduler chunk; filter: wicket_import_chunk_size
 
 // Composer Autoloader
 if (file_exists(WICKET_IMPORT_PATH . 'vendor/autoload.php')) {

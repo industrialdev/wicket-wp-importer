@@ -1,0 +1,4 @@
+First Name,Last Name,Email Address,Address Line 1,Address Line 2,City,State,ZIP,Phone,Fax,Birthdate,Gender
+Jane,Doe,jane.doe@example.com,123 Maple Street,Apt 4B,Springfield,IL,62704,217-555-0142,217-555-0143,1985-03-12,F
+John,Smith,john.smith@example.com,456 Oak Avenue,,Riverfront,CA,90210,310-555-0199,,1979-11-05,M
+Alex,Rivera,alex.rivera@example.com,789 Pine Road,Unit 2,Lakewood,TX,75024,214-555-0177,,1992-07-22,X

@@ -18,6 +18,7 @@ use WicketImporter\BulkImport\Database\ImportStagingTable;
  * @method \WicketImporter\BulkImport\ImportAdapter ImportAdapter()
  * @method \WicketImporter\BulkImport\WicketMdpClient MdpClient()
  * @method \WicketImporter\BulkImport\PersonResolver PersonResolver()
+ * @method \WicketImporter\BulkImport\Subscriptions\BatchProcessor BatchProcessor()
  * @method \WicketImporter\BulkImport\ImportPipeline Pipeline()
  */
 final class WicketImporter
@@ -98,6 +99,13 @@ final class WicketImporter
         $logger = new Services\Logger();
         $mdp_client = new BulkImport\WicketMdpClient($logger);
         $person_resolver = new BulkImport\PersonResolver($mdp_client);
+        $chequeRowProcessor = new BulkImport\Subscriptions\Cheque\ChequeRowProcessor(
+    new BulkImport\Subscriptions\OrderCreator(),
+    new BulkImport\Subscriptions\SubscriptionCreator($logger),
+    new BulkImport\Subscriptions\ProductResolver($logger),
+    $logger
+);
+$batchProcessor = new BulkImport\Subscriptions\BatchProcessor($chequeRowProcessor, $logger);
 
         $this->instances = [
             'Logger'         => $logger,
@@ -109,6 +117,7 @@ final class WicketImporter
             'MdpClient'      => $mdp_client,
             'PersonResolver' => $person_resolver,
             'Pipeline'       => new BulkImport\ImportPipeline($logger, $person_resolver),
+            'BatchProcessor' => $batchProcessor,
         ];
 
         // Instantiate classes that register their own hooks
@@ -121,10 +130,15 @@ final class WicketImporter
         // wicket-wp-memberships (decision D-LOCKBOX-2, PULL architecture).
         new BundleRenewalSubscriber($logger);
 
-        // TODO Phase 4: WicketImporter\BulkImport\Subscriptions\BatchProcessor (the
-        // generic subscriptions-state engine + G3 writer; the cheque loop is a
-        // configured adapter under Subscriptions\Cheque\),
-        // WicketImporter\BulkImport\Subscriptions\Cheque\Rest\ProcessController.
+        // Phase 4 BatchProcessor: the Action Scheduler chunk engine. Its hook is
+        // registered so AS can fire chunks; the per-row work (resolver chain ->
+        // OrderCreator -> SubscriptionCreator) lands in Slice 2.
+        add_action($batchProcessor::CHUNK_HOOK, [$batchProcessor, 'processChunk'], 10, 2);
+
+        // TODO Phase 4 (cheque adapter): OrderCreator (On Hold order, cheque
+        // payment, customer by Bar ID), the per-row processRow wiring that turns
+        // BatchProcessor's placeholder into the resolver -> OrderCreator ->
+        // SubscriptionCreator pipeline, and Cheque\Rest\ProcessController.
     }
 
     /**

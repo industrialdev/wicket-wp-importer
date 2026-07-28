@@ -1203,6 +1203,13 @@ class ImportAdminPage
 				</tbody>
 			</table>
 
+			<?php $sourceRest = $this->restBase(); ?>
+			<p>
+				<a class="button" href="<?php echo esc_url(wp_nonce_url($sourceRest . '/session/' . $batch->session_id . '/source-csv', 'wp_rest', '_wpnonce')); ?>">
+					<?php esc_html_e('Download source CSV', 'wicket-wp-importer'); ?>
+				</a>
+			</p>
+
 			<h2><?php esc_html_e('Rows', 'wicket-wp-importer'); ?> (<?php echo (int) $count; ?>)</h2>
 
 			<?php if (!$rows) : ?>

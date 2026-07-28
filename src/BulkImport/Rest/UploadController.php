@@ -6,6 +6,7 @@ namespace WicketImporter\BulkImport\Rest;
 
 use WicketImporter\Support\ColumnOrder;
 use WicketImporter\Support\CsvExporter;
+use WicketImporter\Support\CsvStorage;
 use WicketImporter\Support\DefaultColumns;
 use WicketImporter\Support\Json;
 use WicketImporter\Support\SecuresRequests;
@@ -31,6 +32,7 @@ use WP_REST_Response;
  *   GET    /import/session/{id}/flagged-csv    Flagged rows CSV (AD14).
  *   GET    /import/session/{id}/results        All rows with import results.
  *   GET    /import/session/{id}/results-csv    Full results CSV (AD14).
+ *   GET    /import/session/{id}/source-csv    Retained source CSV download.
  *   POST   /import/session/{id}/run            Conflict pre-pass + destructive import.
  *   DELETE /import/session/{id}                Clear the session.
  *
@@ -118,6 +120,12 @@ final class UploadController
         register_rest_route($namespace, $sessionBase . '/results-csv', [
             'methods'             => 'GET',
             'callback'            => [$this, 'handleResultsCsv'],
+            'permission_callback' => $permission,
+        ]);
+
+        register_rest_route($namespace, $sessionBase . '/source-csv', [
+            'methods'             => 'GET',
+            'callback'            => [$this, 'handleSourceCsv'],
             'permission_callback' => $permission,
         ]);
     }
@@ -233,10 +241,11 @@ final class UploadController
                 'duplicate_count' => count($summary->duplicates),
             ], 200);
         } finally {
-            // Data is in the staging table; the uploaded copy is no longer needed.
-            // A failed cleanup is non-fatal (uploads dir is GC'd by WP), but surface it.
-            if ($path !== '' && is_string($path) && file_exists($path) && !@unlink($path)) {
-                Plugin::get_instance()->Logger()->warning('Failed to delete uploaded CSV after staging.', ['path' => $path]);
+            // Retain the original CSV: the staged rows cannot reconstruct it
+            // (the cheque spec ignores extra columns), so move it to durable,
+            // download-only storage keyed by session. A failed move is non-fatal.
+            if ($path !== '' && is_string($path) && file_exists($path) && !CsvStorage::store($path, $sessionId)) {
+                Plugin::get_instance()->Logger()->warning('Failed to retain the uploaded CSV for the session.', ['path' => $path, 'session_id' => $sessionId]);
             }
         }
     }
@@ -371,6 +380,8 @@ final class UploadController
     {
         $sessionId = (string) ($request['id'] ?? '');
         Plugin::get_instance()->StagingTable()->deleteSession($sessionId);
+        // Cascade: drop the retained source CSV with its session.
+        CsvStorage::delete($sessionId);
 
         return new WP_REST_Response([
             'deleted'    => true,
@@ -542,6 +553,35 @@ final class UploadController
             sprintf('import-results-%s.csv', $sessionId),
             $this->buildResultsCsv($rows)
         );
+    }
+
+    /**
+     * GET /import/session/{id}/source-csv — download the retained source CSV.
+     *
+     * Streams the original uploaded file (never exposes its uploads-path URL);
+     * capability-gated like the other exports. 404s when no file was retained.
+     */
+    public function handleSourceCsv(WP_REST_Request $request): never
+    {
+        $sessionId = (string) ($request['id'] ?? '');
+
+        if (!CsvStorage::exists($sessionId)) {
+            wp_die(
+                esc_html__('The source CSV for this session is not available.', 'wicket-wp-importer'),
+                esc_html__('Source CSV', 'wicket-wp-importer'),
+                ['response' => 404, 'back_link' => true]
+            );
+        }
+
+        $filename = sanitize_file_name('import-source-' . $sessionId . '.csv');
+
+        nocache_headers();
+        header('Content-Type: text/csv; charset=utf-8');
+        header('Content-Disposition: attachment; filename="' . $filename . '"');
+        header('Content-Length: ' . (string) filesize(CsvStorage::pathFor($sessionId)));
+
+        readfile(CsvStorage::pathFor($sessionId));
+        exit;
     }
 
     /**

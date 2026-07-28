@@ -1,0 +1,154 @@
+<?php
+
+declare(strict_types=1);
+
+namespace WicketImporter\BulkImport\Subscriptions;
+
+use WicketImporter\BulkImport\MemberData;
+use WicketImporter\BulkImport\Subscriptions\ResolvedProducts;
+
+/**
+ * Creates the On Hold WooCommerce order for one cheque-renewal row: the resolved
+ * membership + section + late-fee products as line items, the cheque payment
+ * method, associated with the member's WC customer account.
+ *
+ * Generic by design (AD1). Core resolves the WC customer from the authoritative
+ * MDP person UUID (the same path ImportAdapter uses), NEVER from any client
+ * identifier. A client that keys members on a different identifier (OBA on Bar
+ * ID) overrides the resolution via the wicket_import_resolve_order_customer
+ * filter; core is agnostic to what that identifier is.
+ *
+ * Per spec Story 7, the WC order total reflects the resolved product prices (not
+ * the CSV order_total, which is the divergence anchor ProductResolver checks).
+ * The created order ID feeds SubscriptionCreator::create().
+ */
+class OrderCreator
+{
+    /**
+     * Default payment method for importer-created orders. Filterable via
+     * wicket_import_order_payment_method so a client can route elsewhere.
+     */
+    public const DEFAULT_PAYMENT_METHOD = 'cheque';
+
+    /**
+     * Create the On Hold order for a row's resolved products.
+     *
+     * @return OrderResult created (carries the order ID) or failed.
+     */
+    public function create(MemberData $data, ResolvedProducts $resolved): OrderResult
+    {
+        if ($resolved->isError()) {
+            return OrderResult::failed('Product resolution failed: ' . (string) $resolved->error);
+        }
+
+        if (!function_exists('wc_create_order')) {
+            return OrderResult::failed('WooCommerce is not available.');
+        }
+
+        // Resolve the WC customer. Generic default: MDP person UUID -> WP user
+        // (mirrors ImportAdapter::resolveUserId). A client overrides the
+        // identifier (e.g. Bar ID -> WP user) via the filter; core never
+        // references the client-specific identifier.
+        $userId = (int) apply_filters(
+            'wicket_import_resolve_order_customer',
+            $this->resolveUserIdFromPerson($data),
+            $data,
+            $resolved
+        );
+
+        $order = wc_create_order();
+        if (is_wp_error($order)) {
+            return OrderResult::failed('Could not create the order: ' . $order->get_error_message());
+        }
+
+        if ($userId > 0) {
+            $order->set_customer_id($userId);
+        }
+        $this->applyPaymentMethod($order);
+
+        // Line items: membership renewal + sections + late fees. Returns the
+        // count added so a fully-empty set (every product missing) fails closed
+        // instead of producing an empty order.
+        if ($this->addLineItems($order, $resolved) === 0) {
+            return OrderResult::failed('No products could be added to the order.');
+        }
+
+        $order->calculate_totals();
+        // Set status last so status-transition hooks fire on a complete order.
+        $order->set_status('on-hold');
+        $order->save();
+
+        return OrderResult::created((int) $order->get_id());
+    }
+
+    /**
+     * Add every resolved product as a qty-1 line item. Missing products are
+     * skipped (logged downstream via the resolver's warnings) but do not abort
+     * the order, matching the spec's "section/product not mapped -> flag, do
+     * not block". Returns the number added.
+     *
+     * @param object $order
+     *
+     * @return int
+     */
+    private function addLineItems(object $order, ResolvedProducts $resolved): int
+    {
+        $ids = array_values(array_filter(array_merge(
+            $resolved->membershipProductId > 0 ? [$resolved->membershipProductId] : [],
+            $resolved->sectionProductIds,
+            $resolved->lateFeeProductIds,
+        ), static fn ($id): bool => $id > 0));
+
+        $added = 0;
+        foreach ($ids as $productId) {
+            $product = function_exists('wc_get_product') ? wc_get_product($productId) : false;
+            if ($product === false) {
+                continue;
+            }
+            $order->add_product($product, 1);
+            $added++;
+        }
+
+        return $added;
+    }
+
+    /**
+     * Resolve (creating if absent) the WP user for the MDP person UUID.
+     * Mirrors ImportAdapter::resolveUserId / the memberships Import_Controller:
+     * person UUID as login, names + email forwarded so the base helper does not
+     * re-fetch the person.
+     */
+    private function resolveUserIdFromPerson(MemberData $data): int
+    {
+        $user = function_exists('get_user_by') ? get_user_by('login', $data->personUuid) : false;
+        if ($user !== false && isset($user->ID)) {
+            return (int) $user->ID;
+        }
+
+        if (!function_exists('wicket_create_wp_user_if_not_exist')) {
+            return 0;
+        }
+
+        $id = wicket_create_wp_user_if_not_exist(
+            $data->personUuid,
+            $data->person['first_name'] ?? null,
+            $data->person['last_name'] ?? null,
+            $data->person['email'] ?? null
+        );
+
+        return $id === false ? 0 : (int) $id;
+    }
+
+    /**
+     * Set the (filterable) payment method on the order.
+     *
+     * @param object $order
+     */
+    private function applyPaymentMethod(object $order): void
+    {
+        $method = (string) apply_filters('wicket_import_order_payment_method', self::DEFAULT_PAYMENT_METHOD);
+        if (method_exists($order, 'set_payment_method')) {
+            $order->set_payment_method($method);
+        }
+    }
+}
