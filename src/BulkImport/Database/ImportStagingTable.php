@@ -418,7 +418,7 @@ class ImportStagingTable
         global $wpdb;
         // 'pending'/'session_id' are literals (no user input), so no prepare needed.
         $session_id = $wpdb->get_var(
-            "SELECT session_id FROM {$this->table_name} WHERE import_status = 'pending' LIMIT 1"
+            "SELECT session_id FROM {$this->table_name} WHERE import_status = 'pending' AND validation_status IN ('valid', 'warning') LIMIT 1"
         );
 
         return (is_string($session_id) && $session_id !== '') ? $session_id : null;

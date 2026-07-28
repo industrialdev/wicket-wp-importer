@@ -59,7 +59,7 @@ final class DefaultColumns
                 key: 'email',
                 label: __('Email Address', 'wicket-wp-importer'),
                 required: true,
-                validators: [['type' => 'email']],
+                validators: [['type' => 'required'], ['type' => 'email']],
                 dedup: true,
                 aliases: ['email address', 'email_address', 'e-mail', 'e mail', 'mail'],
             ),

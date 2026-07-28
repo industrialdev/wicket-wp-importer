@@ -4,42 +4,41 @@ declare(strict_types=1);
 
 namespace WicketImporter\Support;
 
-use WicketWP\Support\CsvExporter as BaseCsvExporter;
-
 /**
- * Backwards-compatibility shim.
+ * CSV export helper: streams an injection-safe CSV download.
  *
- * The canonical implementation now lives in wicket-wp-base-plugin at
- * WicketWP\Support\CsvExporter (extracted in WWID-1907 phase 0 so the
- * account-centre plugin can share it without inverting the dependency
- * direction — AD15). This class is preserved so existing importer call sites
- * keep resolving under their old namespace. It delegates every call to the
- * base-plugin implementation and adds no behaviour of its own.
+ * AD14: every exported cell is prefixed with a tab when it starts with a
+ * formula-injection character (= + - @ tab CR), so a malicious member-supplied
+ * value can't execute as a spreadsheet formula on download.
  *
- * Prefer depending on WicketWP\Support\CsvExporter directly in new code.
- *
- * Note: this shim depends on wicket-wp-base-plugin being active (declared in
- * the importer's `Requires Plugins` header). It resolves at WordPress runtime
- * and under the central QA autoload map (qa/pest.php), but a standalone
- * `composer install` of the importer repo alone will NOT autoload the
- * WicketWP\ namespace — there is no composer dependency on base-plugin by
- * design (matches the cross-plugin convention used across the stack).
+ * NOTE: this used to delegate to WicketWP\Support\CsvExporter in wicket-wp-base-plugin
+ * (extracted in WWID-1907). That extraction is not merged, so the importer ships its
+ * own inline implementation to keep the download buttons (template / flagged / results)
+ * working without the unmerged dependency. If/when WWID-1907 lands, this can return to
+ * a thin delegate.
  */
-class CsvExporter
+final class CsvExporter
 {
-    private BaseCsvExporter $delegate;
-
-    public function __construct()
-    {
-        $this->delegate = new BaseCsvExporter();
-    }
-
     /**
      * Escape a single cell value against CSV formula injection.
      */
     public function escapeCellValue(mixed $value): string
     {
-        return $this->delegate->escapeCellValue($value);
+        if ($value === null) {
+            return '';
+        }
+
+        $value = (string) $value;
+        if ($value === '') {
+            return '';
+        }
+
+        // Prefix cells starting with a formula-injection character with a tab.
+        if (preg_match('/^[=+\-@\t\r]/', $value)) {
+            return "\t" . $value;
+        }
+
+        return $value;
     }
 
     /**
@@ -50,7 +49,7 @@ class CsvExporter
      */
     public function writeRow(array $values, $handle): void
     {
-        $this->delegate->writeRow($values, $handle);
+        fputcsv($handle, array_map([$this, 'escapeCellValue'], $values));
     }
 
     /**
@@ -61,6 +60,18 @@ class CsvExporter
      */
     public function download(string $filename, array $rows): never
     {
-        $this->delegate->download($filename, $rows);
+        $filename = sanitize_file_name($filename);
+
+        nocache_headers();
+        header('Content-Type: text/csv; charset=utf-8');
+        header('Content-Disposition: attachment; filename="' . $filename . '"');
+
+        $out = fopen('php://output', 'w');
+        foreach ($rows as $row) {
+            $this->writeRow($row, $out);
+        }
+        fclose($out);
+
+        exit;
     }
 }

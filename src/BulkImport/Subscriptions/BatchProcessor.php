@@ -120,6 +120,38 @@ final class BatchProcessor
     }
 
     /**
+     * Finalize a run's batches row by session_id (used by the inline member
+     * /run path, which has no batch_id in hand). Computes the phase-1 tally
+     * from the session's import summary and updates the row's status + stats.
+     */
+    public function finishRunBySession(string $sessionId, string $status): void
+    {
+        $stats = $this->tally($sessionId, new ImportStagingTable());
+
+        global $wpdb;
+        $allowed = [
+            'phase1_succeeded', 'phase1_failed', 'phase1_needs_review',
+            'phase2_total', 'phase2_succeeded', 'phase2_failed', 'phase2_needs_review',
+        ];
+        $data = ['status' => $status, 'finished_at' => \current_time('mysql', true)];
+        $formats = ['%s', '%s'];
+        foreach ($allowed as $k) {
+            if (array_key_exists($k, $stats)) {
+                $data[$k] = (int) $stats[$k];
+                $formats[] = '%d';
+            }
+        }
+
+        $wpdb->update(
+            $wpdb->prefix . self::TABLE,
+            $data,
+            ['session_id' => $sessionId],
+            $formats,
+            ['%s']
+        );
+    }
+
+    /**
      * Kick off a batch run: insert the running batches row, then schedule the
      * first chunk. Returns the batch_id so the caller can track the run.
      */

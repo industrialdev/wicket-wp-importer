@@ -201,6 +201,8 @@ final class UploadController
 
         $path = $upload['file'];
 
+        $sessionId = '';
+
         try {
             $columns = $this->resolveColumns();
 
@@ -240,6 +242,10 @@ final class UploadController
                 $sessionId
             );
 
+            // Record the run in the batches table so the Import History tab
+            // lists member imports (BatchProcessor owns the batches writer).
+            $plugin->BatchProcessor()->startRun($sessionId, $originalName, get_current_user_id(), $summary->total);
+
             return new WP_REST_Response([
                 'session_id'     => $sessionId,
                 'total_rows'     => $summary->total,
@@ -251,7 +257,7 @@ final class UploadController
             // Retain the original CSV: the staged rows cannot reconstruct it
             // (the cheque spec ignores extra columns), so move it to durable,
             // download-only storage keyed by session. A failed move is non-fatal.
-            if ($path !== '' && is_string($path) && file_exists($path) && !CsvStorage::store($path, $sessionId)) {
+            if ($sessionId !== '' && $path !== '' && is_string($path) && file_exists($path) && !CsvStorage::store($path, $sessionId)) {
                 Plugin::get_instance()->Logger()->warning('Failed to retain the uploaded CSV for the session.', ['path' => $path, 'session_id' => $sessionId]);
             }
         }
@@ -349,10 +355,13 @@ final class UploadController
         if (is_wp_error($result)) {
             // Map the inline-cap guard to 413 so the UI can show a distinct
             // message ("split your batch") vs a generic 500.
+            $plugin->BatchProcessor()->finishRunBySession($sessionId, 'failed');
             $status = ($result->get_error_code() === 'import_too_many_rows') ? 413 : 500;
 
             return $this->error($result->get_error_code(), $result->get_error_message(), $status);
         }
+
+        $plugin->BatchProcessor()->finishRunBySession($sessionId, 'completed');
 
         return new WP_REST_Response([
             'session_id'      => $sessionId,
