@@ -10,8 +10,11 @@ namespace WicketImporter\Support;
  * The staged rows cannot reconstruct the source file (the cheque spec says extra
  * columns are ignored), so the original is retained for download/audit and
  * deleted with its session. Files live under wp_upload_dir()/wicket-importer/,
- * served ONLY through the nonce-gated REST route — never via a raw URL — and an
- * .htaccess denies direct web access (Apache; nginx needs an equivalent deny).
+ * served ONLY through the nonce-gated REST route — never via a raw URL — with an
+ * .htaccess (Apache "Require all denied") + an index.php to deny directory listing.
+ * nginx ignores .htaccess, so on nginx also add a server-level deny on the
+ * wicket-importer/ location; the UUID filename + index.php + nonce route are the
+ * portable mitigation until then.
  */
 final class CsvStorage
 {
@@ -72,7 +75,13 @@ final class CsvStorage
 
     /**
      * Ensure the storage directory exists and direct web access is denied.
-     * Apache .htaccess; nginx needs an equivalent `location ~ /wicket-importer/ { deny all; }`.
+     *
+     * Hardening: an Apache 2.4 "Require all denied" .htaccess (the 2.2 "Deny
+     * from all" needs mod_access_compat and can 500 without it, so it is not
+     * emitted) + an index.php that silences directory listing on any server.
+     * nginx ignores .htaccess entirely — for nginx, also configure a server-
+     * level `location ~ /wicket-importer/ { deny all; }`; the UUID filename +
+     * index.php + the nonce-gated source-csv route are the portable mitigation.
      */
     private static function ensureStorageDir(): void
     {
@@ -83,7 +92,13 @@ final class CsvStorage
 
         $htaccess = $dir . '.htaccess';
         if (!file_exists($htaccess)) {
-            @file_put_contents($htaccess, "Require all denied\nDeny from all\n");
+            @file_put_contents($htaccess, "Require all denied\n");
+        }
+
+        // Silence directory listing on any server (the WP convention).
+        $index = $dir . 'index.php';
+        if (!file_exists($index)) {
+            @file_put_contents($index, "<?php\n// Silence is golden.\n");
         }
     }
 }
