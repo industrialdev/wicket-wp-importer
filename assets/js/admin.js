@@ -92,6 +92,44 @@
 	};
 
 	// ------------------------------------------------------------------
+	// Run-in-progress banner (Proceed -> POST /run)
+	// ------------------------------------------------------------------
+	// The inline import sets ignore_user_abort(true), so it survives the user
+	// leaving the page. Show a persistent banner that says so + links to History.
+	function showRunInProgress() {
+		if (!cfg.historyUrl) {
+			window.WicketImportShowNotice(t('Importing rows \u2014 this may take a moment.'), 'info');
+			return;
+		}
+		var notices = document.querySelector('.wicket-importer-notices');
+		if (!notices) {
+			return;
+		}
+		var prior = notices.querySelector('.wicket-importer-run-progress');
+		if (prior) {
+			prior.remove();
+		}
+		var div = document.createElement('div');
+		div.className = 'notice notice-info wicket-importer-run-progress';
+		var head = document.createElement('p');
+		var strong = document.createElement('strong');
+		strong.textContent = t('Import is processing in the background.');
+		head.appendChild(strong);
+		head.appendChild(document.createTextNode(' ' + t('You can safely leave this page; the import keeps running if you navigate away.')));
+		var track = document.createElement('p');
+		track.appendChild(document.createTextNode(t('Track progress on the') + ' '));
+		var link = document.createElement('a');
+		link.href = cfg.historyUrl;
+		link.textContent = t('Import History');
+		track.appendChild(link);
+		track.appendChild(document.createTextNode(' ' + t('tab.')));
+		div.appendChild(head);
+		div.appendChild(track);
+		notices.appendChild(div);
+		notices.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+	}
+
+	// ------------------------------------------------------------------
 	// Task 7: Upload Type toggle
 	// ------------------------------------------------------------------
 
@@ -302,7 +340,7 @@
 			btn.textContent = t('Processing\u2026');
 			var restartBtns = page.querySelectorAll('.wicket-importer-restart');
 			restartBtns.forEach(function(b) { b.disabled = true; });
-			window.WicketImportShowNotice(t('Importing rows \u2014 this may take a moment.'), 'info');
+			showRunInProgress();
 
 			fetch(runUrl, {
 				method: 'POST',

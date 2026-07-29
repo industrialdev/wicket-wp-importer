@@ -66,6 +66,7 @@ class Assets
             'maxFileSize'     => (int) apply_filters('wicket_import_max_file_size', WICKET_IMPORT_DEFAULT_MAX_FILE_SIZE),
             'confirmationUrl' => esc_url_raw(admin_url('admin.php?page=wicket-wp-importer&screen=confirmation')),
             'uploadUrl'       => esc_url_raw(admin_url('admin.php?page=wicket-wp-importer&screen=upload')),
+            'historyUrl'      => esc_url_raw(admin_url('admin.php?page=wicket-wp-importer&tab=history')),
         ]);
 
         wp_enqueue_script('wicket-import-admin');
