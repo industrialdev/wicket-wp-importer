@@ -58,18 +58,18 @@ final class BatchProcessor
         global $wpdb;
 
         $batchId = \wp_generate_uuid4();
-        $runAt = \current_time('mysql', true);
 
+        // created_at auto-defaults to CURRENT_TIMESTAMP; the History tab's
+        // "Started" column reads it, so no explicit run-start column is needed.
         $wpdb->query($wpdb->prepare(
-            "INSERT INTO {$wpdb->prefix}" . self::TABLE . " (batch_id, session_id, status, csv_filename, created_by_user_id, csv_row_count, phase1_total, run_at) VALUES (%s, %s, %s, %s, %d, %d, %d, %s)",
+            "INSERT INTO {$wpdb->prefix}" . self::TABLE . " (batch_id, session_id, status, csv_filename, created_by_user_id, csv_row_count, phase1_total) VALUES (%s, %s, %s, %s, %d, %d, %d)",
             $batchId,
             $sessionId,
             'running',
             $csvFilename,
             $createdByUserId,
             $totalRows,
-            $totalRows,
-            $runAt
+            $totalRows
         ));
 
         $this->logger?->info('Batch run started.', [
