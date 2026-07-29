@@ -207,7 +207,7 @@ final class UploadController
             $columns = $this->resolveColumns();
 
             $plugin = Plugin::get_instance();
-            $parse = $plugin->FileParser()->parseFile($path, $columns);
+            $parse = $plugin->FileParser()->parseFile($path, $columns, $request->get_param('delimiter'));
 
             if ($parse->hasError()) {
                 return $this->error(

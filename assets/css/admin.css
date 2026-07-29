@@ -52,6 +52,15 @@
 	margin: 16px 0;
 }
 
+.wicket-importer-delimiter {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	margin: 0 0 16px;
+	padding: 0;
+	border: 0;
+}
+
 .wicket-importer-toggle {
 	position: relative;
 	display: inline-flex;
@@ -396,6 +405,10 @@
 	width: 220px;
 }
 
+.wicket-importer-history-summary {
+	margin-bottom: 16px;
+}
+
 .wicket-importer-history-msg {
 	font-size: 12px;
 	color: #646970;
@@ -417,5 +430,50 @@
 }
 
 .wicket-importer-history-pagination {
-	margin-top: 12px;
+	display: flex;
+	justify-content: flex-end;
+	margin-top: 16px;
+}
+
+.wicket-importer-history-pagination .tablenav-pages {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+}
+
+.wicket-importer-history-pagination .page-numbers {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	min-width: 30px;
+	height: 30px;
+	padding: 0 8px;
+	border: 1px solid #c3c4c7;
+	border-radius: 4px;
+	background: #fff;
+	color: #2271b1;
+	font-size: 13px;
+	font-weight: 600;
+	line-height: 1;
+	text-decoration: none;
+	transition: background-color .05s, border-color .05s, color .05s;
+}
+
+.wicket-importer-history-pagination .page-numbers:hover {
+	background: #f0f0f1;
+	border-color: #8c8f94;
+	color: #135e96;
+}
+
+.wicket-importer-history-pagination .page-numbers.current {
+	background: #2271b1;
+	border-color: #2271b1;
+	color: #fff;
+	cursor: default;
+}
+
+.wicket-importer-history-pagination .page-numbers.next,
+.wicket-importer-history-pagination .page-numbers.prev {
+	font-size: 16px;
+	padding: 0 10px;
 }

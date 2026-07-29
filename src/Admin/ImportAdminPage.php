@@ -180,7 +180,20 @@ class ImportAdminPage
          * file preview, bound by admin.js. The confirm button POSTs to
          * /import/upload via fetch and redirects to the validation screen.
          */
+        $defaultDelimiter = (string) apply_filters('wicket_import_csv_delimiter', ',');
+        $defaultDelimiter = in_array($defaultDelimiter, [',', ';'], true) ? $defaultDelimiter : ',';
         ?>
+			<fieldset class="wicket-importer-delimiter">
+				<legend><?php esc_html_e('CSV delimiter', 'wicket-wp-importer'); ?></legend>
+				<label class="wicket-importer-toggle">
+					<input type="radio" name="wicket_import_csv_delimiter" value="," <?php checked($defaultDelimiter, ','); ?>>
+					<span><?php esc_html_e('Comma', 'wicket-wp-importer'); ?> (,)</span>
+				</label>
+				<label class="wicket-importer-toggle">
+					<input type="radio" name="wicket_import_csv_delimiter" value=";" <?php checked($defaultDelimiter, ';'); ?>>
+					<span><?php esc_html_e('Semicolon', 'wicket-wp-importer'); ?> (;)</span>
+				</label>
+			</fieldset>
 			<div
 				id="wicket-import-dropzone"
 				class="wicket-importer-dropzone"

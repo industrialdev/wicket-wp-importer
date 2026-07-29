@@ -239,6 +239,10 @@
 
 				var data = new FormData();
 				data.append('file', selectedFile);
+				var delim = document.querySelector('input[name="wicket_import_csv_delimiter"]:checked');
+				if (delim) {
+					data.append('delimiter', delim.value);
+				}
 
 				fetch(url, {
 					method: 'POST',

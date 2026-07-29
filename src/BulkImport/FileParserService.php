@@ -28,9 +28,10 @@ final class FileParserService
      *
      * @param string                 $path             Absolute path to an uploaded CSV. Caller (REST endpoint, Task 6) MUST verify it resides under wp_upload_dir()['basedir'] before calling.
      * @param list<ColumnDefinition> $columnDefinitions Expected columns.
+     * @param string|null            $delimiter        Per-upload override (user-selectable). Restricted to the supported set; null falls back to the wicket_import_csv_delimiter filter default.
      * @return ParseResult Rows on success; error populated on failure.
      */
-    public function parseFile(string $path, array $columnDefinitions): ParseResult
+    public function parseFile(string $path, array $columnDefinitions, ?string $delimiter = null): ParseResult
     {
         if ($columnDefinitions === []) {
             return new ParseResult(rows: [], missingHeaders: [], totalCount: 0, error: 'No column definitions provided.');
@@ -54,7 +55,7 @@ final class FileParserService
 
         try {
             $this->stripBom($handle);
-            $delimiter = $this->resolveDelimiter();
+            $delimiter = $this->resolveDelimiter($delimiter);
 
             return $this->readRows($handle, $delimiter, $columnDefinitions);
         } finally {
@@ -96,10 +97,21 @@ final class FileParserService
     }
 
     /**
-     * Resolve the CSV delimiter via filter; validate it is a single character.
+     * Resolve the CSV delimiter.
+     *
+     * A per-upload user choice (from the upload UI) wins when it is one of the
+     * supported set; otherwise the wicket_import_csv_delimiter filter default
+     * applies. The supported set is locked to comma and semicolon because those
+     * are the only delimiters the UI offers.
+     *
+     * @param string|null $explicit Per-upload delimiter chosen in the UI.
      */
-    private function resolveDelimiter(): string
+    private function resolveDelimiter(?string $explicit = null): string
     {
+        if (in_array($explicit, [',', ';'], true)) {
+            return $explicit;
+        }
+
         /** @var string $delimiter */
         $delimiter = (string) apply_filters('wicket_import_csv_delimiter', ',');
 
