@@ -80,7 +80,7 @@ final class ChequeRowProcessor implements RowProcessor
         }
 
         $orderId = (int) $order->orderId;
-        $sub = $this->subscriptionCreator->create($orderId, $memberData, $resolved);
+        $sub = $this->subscriptionCreator->create($orderId, $memberData, $resolved, $membershipPostId);
         if ($sub->isFailed()) {
             // Compensation: the order exists but its subscription did not.
             // Retain the order_id and flag for review; never auto-cancel.

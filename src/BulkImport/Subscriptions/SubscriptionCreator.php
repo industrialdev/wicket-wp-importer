@@ -25,11 +25,12 @@ use WicketImporter\Services\Logger;
  * cheque BatchProcessor are not yet built, so these are documented calls to
  * revise when they land):
  *
- *   1. Membership post ID for the `_membership_post_id_renew` line-item meta is
- *      resolved at RUNTIME by querying the member's wicket_membership post for
- *      the row's tier (WP user derived from the order). When none is found, the
- *      meta is omitted and a warning logged; the subscription is still created.
- *      Revise when OrderCreator defines where the membership post is created.
+ *   1. RESOLVED 2026-07-31 (WWID-2028 seam closure): the membership post ID
+ *      for the `_membership_post_id_renew` line-item meta is supplied by the
+ *      caller (ChequeRowProcessor sources it via the
+ *      wicket_import_resolve_membership_post filter) and passed into create().
+ *      0 omits the meta and logs a warning; the subscription is still created.
+ *      The per-row runtime double-meta-join lookup was removed.
  *   2. Section products are added as line items to ONE section subscription
  *      (a single wcs_create_subscription call). If per-section subscriptions
  *      are required, split createSectionSubscription().
@@ -48,11 +49,12 @@ class SubscriptionCreator
     /**
      * Create the membership + section subscriptions for a cheque-renewal row.
      *
-     * @param int              $orderId    The On Hold order created by OrderCreator.
-     * @param MemberData       $memberData The member context (row + tier).
-     * @param ResolvedProducts $resolved   The resolved product set (WWID-2029).
+     * @param int              $orderId          The On Hold order created by OrderCreator.
+     * @param MemberData       $memberData       The member context (row + tier).
+     * @param ResolvedProducts $resolved         The resolved product set (WWID-2029).
+     * @param int              $membershipPostId The wicket_membership post (0 omits the _membership_post_id_renew meta + warns).
      */
-    public function create(int $orderId, MemberData $memberData, ResolvedProducts $resolved): SubscriptionResult
+    public function create(int $orderId, MemberData $memberData, ResolvedProducts $resolved, int $membershipPostId): SubscriptionResult
     {
         if (!$this->wcsAvailable()) {
             return SubscriptionResult::failed('WooCommerce Subscriptions is not available.');
@@ -64,9 +66,8 @@ class SubscriptionCreator
         }
 
         $userId = (int) $order->get_user_id();
-        $membershipPostId = $this->resolveMembershipPostId($userId, $memberData->tierPostId);
         if ($membershipPostId === 0) {
-            $this->logger?->warning('No membership post found for the tier; _membership_post_id_renew meta omitted.', [
+            $this->logger?->warning('No membership post supplied; _membership_post_id_renew meta omitted.', [
                 'order' => $orderId, 'tier_post_id' => $memberData->tierPostId,
             ]);
         }
@@ -232,41 +233,6 @@ class SubscriptionCreator
     }
 
     /**
-     * Resolve the member's wicket_membership post for the row's tier.
-     *
-     * @return int Post ID, or 0 when none found.
-     */
-    private function resolveMembershipPostId(int $userId, int $tierPostId): int
-    {
-        if ($userId === 0 || $tierPostId === 0) {
-            return 0;
-        }
-        // P1: per-row double-meta-join. Minimize the query cost (no found-row
-        // count, no term/meta cache priming) and prefer the NEWEST matching post
-        // (orderby date DESC) so an expired membership does not win over the
-        // current one. Preferred long-term fix per the lockbox plan: pass the
-        // membership post ID into create() once OrderCreator owns that step, so
-        // this lookup disappears entirely.
-        $posts = get_posts([
-            'post_type' => $this->membershipCptSlug(),
-            'numberposts' => 1,
-            'post_status' => 'any',
-            'fields' => 'ids',
-            'no_found_rows' => true,
-            'update_post_meta_cache' => false,
-            'update_post_term_cache' => false,
-            'orderby' => 'date',
-            'order' => 'DESC',
-            'meta_query' => [
-                ['key' => 'user_id', 'value' => $userId],
-                ['key' => 'membership_tier_post_id', 'value' => $tierPostId],
-            ],
-        ]);
-
-        return !empty($posts[0]) ? (int) $posts[0] : 0;
-    }
-
-    /**
      * Billing period + interval for a subscription product.
      *
      * @return array{0:string,1:int}
@@ -357,12 +323,4 @@ class SubscriptionCreator
         return $product !== false ? $product : null;
     }
 
-    private function membershipCptSlug(): string
-    {
-        if (class_exists('\Wicket_Memberships\Helper') && method_exists('\Wicket_Memberships\Helper', 'get_membership_cpt_slug')) {
-            return (string) \Wicket_Memberships\Helper::get_membership_cpt_slug();
-        }
-
-        return 'wicket_membership';
-    }
 }
