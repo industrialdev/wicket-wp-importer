@@ -9,6 +9,7 @@ use WicketImporter\Support\CsvExporter;
 use WicketImporter\Support\CsvStorage;
 use WicketImporter\Support\DefaultColumns;
 use WicketImporter\Support\Json;
+use WicketImporter\Support\ReviewSuggester;
 use WicketImporter\Support\SecuresRequests;
 use WicketImporter\ValueObjects\ColumnDefinition;
 use WicketImporter\ValueObjects\CsvRow;
@@ -32,6 +33,7 @@ use WP_REST_Response;
  *   GET    /import/session/{id}/flagged-csv    Flagged rows CSV (AD14).
  *   GET    /import/session/{id}/results        All rows with import results.
  *   GET    /import/session/{id}/results-csv    Full results CSV (AD14).
+ *   GET    /import/session/{id}/error-csv      Failed + needs_review CSV (AD14).
  *   GET    /import/session/{id}/source-csv    Retained source CSV download.
  *   POST   /import/session/{id}/run            Conflict pre-pass + destructive import.
  *   POST   /import/cheque/session/{id}/run   Trigger the cheque bulk-create batch (Action Scheduler).
@@ -133,6 +135,12 @@ final class UploadController
         register_rest_route($namespace, $sessionBase . '/source-csv', [
             'methods'             => 'GET',
             'callback'            => [$this, 'handleSourceCsv'],
+            'permission_callback' => $permission,
+        ]);
+
+        register_rest_route($namespace, $sessionBase . '/error-csv', [
+            'methods'             => 'GET',
+            'callback'            => [$this, 'handleErrorCsv'],
             'permission_callback' => $permission,
         ]);
     }
@@ -572,6 +580,24 @@ final class UploadController
     }
 
     /**
+     * GET /import/session/{id}/error-csv — failed + needs_review rows CSV (AD14).
+     *
+     * The focused export for the cheque Review UI: only the rows a human reviews
+     * (failed + needs_review), with a Suggested Fix column. Distinct from
+     * results-csv (all rows) and flagged-csv (validation-flagged rows).
+     */
+    public function handleErrorCsv(WP_REST_Request $request): never
+    {
+        $sessionId = (string) ($request['id'] ?? '');
+        $rows = Plugin::get_instance()->StagingTable()->getByImportStatus($sessionId, ['failed', 'needs_review']);
+
+        (new CsvExporter())->download(
+            sprintf('import-errors-%s.csv', $sessionId),
+            $this->buildErrorCsv($rows)
+        );
+    }
+
+    /**
      * GET /import/session/{id}/source-csv — download the retained source CSV.
      *
      * Streams the original uploaded file (never exposes its uploads-path URL);
@@ -824,6 +850,41 @@ final class UploadController
             $line[] = (string) ($row['mdp_uuid'] ?? '');
             $line[] = ($orderId !== null && $orderId !== '') ? (string) $orderId : '';
             $line[] = implode(', ', Json::decodeArray($row['subscription_ids'] ?? null));
+
+            $out[] = $line;
+        }
+
+        return array_merge([$headers], $out);
+    }
+
+    /**
+     * Build the CSV row list (headers first) for a failed + needs_review export.
+     *
+     * @param list<array<string,mixed>> $rows Staged rows.
+     * @return list<list<string>>
+     */
+    private function buildErrorCsv(array $rows): array
+    {
+        $dataKeys = ColumnOrder::forRows($rows);
+        $headers = array_merge(['Line'], $dataKeys, ['Status', 'Reason', 'Order ID', 'Suggested Fix']);
+
+        $out = [];
+        foreach ($rows as $row) {
+            $data = Json::decodeArray($row['raw_data'] ?? null);
+            $line = [(string) (((int) ($row['row_index'] ?? 0)) + 2)];
+
+            foreach ($dataKeys as $key) {
+                $line[] = (string) ($data[$key] ?? '');
+            }
+
+            $orderId = $row['order_id'] ?? null;
+            $status = (string) ($row['import_status'] ?? '');
+            $reason = (string) ($row['import_message'] ?? '');
+
+            $line[] = $status;
+            $line[] = $reason;
+            $line[] = ($orderId !== null && $orderId !== '') ? (string) $orderId : '';
+            $line[] = ReviewSuggester::suggestedFix($status, $reason);
 
             $out[] = $line;
         }

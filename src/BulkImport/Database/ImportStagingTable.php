@@ -302,6 +302,37 @@ class ImportStagingTable
     }
 
     /**
+     * Get rows in a session filtered to a set of import statuses.
+     *
+     * Used by the cheque Review UI and its error CSV export to render the
+     * failed + needs_review rows a human reviews before Phase 2. Generic so a
+     * future caller (e.g. the Phase 2 reconciler) can query any status set
+     * without a new method.
+     *
+     * @param string        $session_id Session to read.
+     * @param list<string>  $statuses   import_status values to include.
+     *
+     * @return list<array<string,mixed>> Rows (ARRAY_A), in row order.
+     */
+    public function getByImportStatus(string $session_id, array $statuses): array
+    {
+        global $wpdb;
+        $statuses = array_values(array_filter($statuses, 'is_string'));
+        if ($statuses === []) {
+            return [];
+        }
+
+        $placeholders = implode(',', array_fill(0, count($statuses), '%s'));
+        $sql = "SELECT * FROM {$this->table_name} WHERE session_id = %s AND import_status IN ({$placeholders}) ORDER BY row_index ASC, id ASC";
+        $rows = $wpdb->get_results(
+            $wpdb->prepare($sql, $session_id, ...$statuses),
+            ARRAY_A
+        );
+
+        return is_array($rows) ? array_values($rows) : [];
+    }
+
+    /**
      * Update import result for a single row.
      */
     public function updateImportResult(int $id, string $import_status, ?string $import_message = null): void

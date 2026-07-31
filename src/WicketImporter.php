@@ -135,6 +135,10 @@ $batchProcessor = new BulkImport\Subscriptions\BatchProcessor($chequeRowProcesso
         // OrderCreator -> SubscriptionCreator) lands in Slice 2.
         add_action($batchProcessor::CHUNK_HOOK, [$batchProcessor, 'processChunk'], 10, 2);
 
+        // WWID-2026: the cheque Phase 1 review's "Proceed to Phase 2" form
+        // posts to admin-post.php. The handler is a stub until Phase 2 ships.
+        add_action('admin_post_wicket_import_cheque_proceed', [Admin\ChequeReviewPage::class, 'handleProceed']);
+
         // TODO Phase 4 (cheque adapter): OrderCreator (On Hold order, cheque
         // payment, customer by Bar ID), the per-row processRow wiring that turns
         // BatchProcessor's placeholder into the resolver -> OrderCreator ->

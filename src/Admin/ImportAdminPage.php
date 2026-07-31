@@ -93,6 +93,9 @@ class ImportAdminPage
             })
             ->addTab('history', __('Import History', 'wicket-wp-importer'), function (): void {
                 $this->renderHistoryTab();
+            })
+            ->addTab('cheque-review', __('Cheque Review', 'wicket-wp-importer'), function (): void {
+                (new ChequeReviewPage())->render();
             });
 
         $page->register();

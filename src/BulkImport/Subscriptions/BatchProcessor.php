@@ -16,6 +16,10 @@ use WicketImporter\Services\Logger;
  * importable rows remain. Also writes the wicket_import_batches row so the
  * Import History tab renders real runs (G3).
  *
+ * Phase 1 completion lands the batch in `pending_review` (the human gate
+ * before Phase 2). The inline member path stays `completed` via
+ * finishRunBySession; only the cheque/AS path arms the review gate.
+ *
  * Single-chain model: one chunk action runs at a time per batch (each action
  * claims its own slice via ImportStagingTable::claimChunk, processes it, then
  * schedules the next). Concurrent AS runners are not assumed; if enabled
@@ -152,6 +156,27 @@ final class BatchProcessor
     }
 
     /**
+     * Read a session's batch row (status + phase stats). The Review UI uses it
+     * to decide whether the "Proceed to Phase 2" gate is armed (status
+     * pending_review).
+     *
+     * @return array<string,mixed>|null The batch row (ARRAY_A), or null when none.
+     */
+    public function getBatchBySession(string $sessionId): ?array
+    {
+        global $wpdb;
+        $row = $wpdb->get_row(
+            $wpdb->prepare(
+                "SELECT * FROM {$wpdb->prefix}" . self::TABLE . " WHERE session_id = %s ORDER BY id DESC LIMIT 1",
+                $sessionId
+            ),
+            ARRAY_A
+        );
+
+        return is_array($row) ? $row : null;
+    }
+
+    /**
      * Kick off a batch run: insert the running batches row, then schedule the
      * first chunk. Returns the batch_id so the caller can track the run.
      */
@@ -187,8 +212,11 @@ final class BatchProcessor
         }
 
         if ($claimed === 0) {
-            // No importable rows remain: the run is complete.
-            $this->finishRun($batchId, 'completed', $this->tally($sessionId, $staging));
+            // No importable rows remain: Phase 1 is done. Land the batch in
+            // pending_review so the Review UI arms the Phase 2 gate. The inline
+            // member path keeps 'completed' (finishRunBySession); this is the
+            // cheque/AS path only.
+            $this->finishRun($batchId, 'pending_review', $this->tally($sessionId, $staging));
 
             return;
         }
