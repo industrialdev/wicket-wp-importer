@@ -33,8 +33,10 @@ if (file_exists(WICKET_IMPORT_PATH . 'vendor/autoload.php')) {
     require_once WICKET_IMPORT_PATH . 'vendor/autoload.php';
 }
 
-// Initialize the plugin
-add_action('init', [WicketImporter\WicketImporter::class, 'plugin_setup']);
+// Initialize the plugin. Registered on `init` (not `plugins_loaded`) because
+// plugin_setup() depends on wicket_api_client(), which the base plugin loads
+// at `init` priority 0.
+add_action('init', [WicketImporter\WicketImporter::get_instance(), 'plugin_setup']);
 
 // Activation hook for DB installation
 register_activation_hook(__FILE__, [WicketImporter\BulkImport\Database\DbInstaller::class, 'createTables']);

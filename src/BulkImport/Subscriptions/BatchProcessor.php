@@ -44,7 +44,7 @@ final class BatchProcessor
 
     /**
      * Action Scheduler hook a chunk action fires. Registered in
-     * WicketImporter::setup(); the callback is processChunk().
+     * WicketImporter::plugin_setup(); the callback is processChunk().
      */
     public const CHUNK_HOOK = 'wicket_import_process_chunk';
 

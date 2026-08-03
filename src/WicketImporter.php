@@ -69,17 +69,16 @@ final class WicketImporter
     }
 
     /**
-     * Static wrapper for hooks setup.
-     */
-    public static function plugin_setup(): void
-    {
-        self::get_instance()->setup();
-    }
-
-    /**
      * Setup and register all services and hooks.
+     *
+     * Hooked on `init` (not `plugins_loaded`) because the runtime dependency
+     * check calls `wicket_api_client()`, which the base plugin loads at
+     * `init` priority 0 (src/Includes.php). Hooking at `plugins_loaded` would
+     * make `function_exists('wicket_api_client')` return false and abort boot.
+     *
+     * @wp-hook init
      */
-    private function setup(): void
+    public function plugin_setup(): void
     {
         // S4: guard runtime dependencies. The Requires Plugins header is enforced
         // at activation, not at runtime — deactivate wicket-wp-base-plugin or
