@@ -66,7 +66,7 @@ final class BatchProcessor
         // created_at auto-defaults to CURRENT_TIMESTAMP; the History tab's
         // "Started" column reads it, so no explicit run-start column is needed.
         $wpdb->query($wpdb->prepare(
-            "INSERT INTO {$wpdb->prefix}" . self::TABLE . " (batch_id, session_id, status, csv_filename, created_by_user_id, csv_row_count, phase1_total) VALUES (%s, %s, %s, %s, %d, %d, %d)",
+            "INSERT INTO {$wpdb->prefix}" . self::TABLE . ' (batch_id, session_id, status, csv_filename, created_by_user_id, csv_row_count, phase1_total) VALUES (%s, %s, %s, %s, %d, %d, %d)',
             $batchId,
             $sessionId,
             'running',
@@ -167,7 +167,7 @@ final class BatchProcessor
         global $wpdb;
         $row = $wpdb->get_row(
             $wpdb->prepare(
-                "SELECT * FROM {$wpdb->prefix}" . self::TABLE . " WHERE session_id = %s ORDER BY id DESC LIMIT 1",
+                "SELECT * FROM {$wpdb->prefix}" . self::TABLE . ' WHERE session_id = %s ORDER BY id DESC LIMIT 1',
                 $sessionId
             ),
             ARRAY_A

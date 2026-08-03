@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace WicketImporter;
 
-use WicketImporter\BulkImport\Subscriptions\BundleRenewalSubscriber;
 use WicketImporter\BulkImport\Database\ImportStagingTable;
+use WicketImporter\BulkImport\Subscriptions\BundleRenewalSubscriber;
 
 /**
  * Main Wicket Importer plugin class.
@@ -100,12 +100,12 @@ final class WicketImporter
         $mdp_client = new BulkImport\WicketMdpClient($logger);
         $person_resolver = new BulkImport\PersonResolver($mdp_client);
         $chequeRowProcessor = new BulkImport\Subscriptions\Cheque\ChequeRowProcessor(
-    new BulkImport\Subscriptions\OrderCreator(),
-    new BulkImport\Subscriptions\SubscriptionCreator($logger),
-    new BulkImport\Subscriptions\ProductResolver($logger),
-    $logger
-);
-$batchProcessor = new BulkImport\Subscriptions\BatchProcessor($chequeRowProcessor, $logger);
+            new BulkImport\Subscriptions\OrderCreator(),
+            new BulkImport\Subscriptions\SubscriptionCreator($logger),
+            new BulkImport\Subscriptions\ProductResolver($logger),
+            $logger
+        );
+        $batchProcessor = new BulkImport\Subscriptions\BatchProcessor($chequeRowProcessor, $logger);
 
         $this->instances = [
             'Logger'         => $logger,

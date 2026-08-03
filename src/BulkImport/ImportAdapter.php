@@ -4,10 +4,10 @@ declare(strict_types=1);
 
 namespace WicketImporter\BulkImport;
 
-use WicketImporter\WicketImporter as Plugin;
 use Wicket_Memberships\Membership_Controller;
 use Wicket_Memberships\Membership_Tier;
 use Wicket_Memberships\Utilities;
+use WicketImporter\WicketImporter as Plugin;
 
 /**
  * Creates the wicket_membership CPT for one import row by delegating to the

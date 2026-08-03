@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace WicketImporter\BulkImport\Subscriptions;
 
 use WicketImporter\BulkImport\MemberData;
-use WicketImporter\BulkImport\Subscriptions\ResolvedProducts;
 
 /**
  * Creates the On Hold WooCommerce order for one cheque-renewal row: the resolved

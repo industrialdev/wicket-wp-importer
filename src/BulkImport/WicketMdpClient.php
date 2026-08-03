@@ -68,7 +68,7 @@ final class WicketMdpClient
      *                    on hit, null on a clean no-match, WP_Error when the
      *                    lookup itself failed (caller must fail-closed).
      */
-    public function findPersonByEmail(string $email): array|null|\WP_Error
+    public function findPersonByEmail(string $email): array|\WP_Error|null
     {
         $email = trim($email);
         if ($email === '') {
@@ -248,7 +248,7 @@ final class WicketMdpClient
      * @param string $uuid Person UUID.
      *
      * @return bool|null True when one or more active memberships exist, false when
-         *                   confirmed none, null when the check failed (unknown).
+     *                   confirmed none, null when the check failed (unknown).
      */
     public function hasActiveMembership(string $uuid): ?bool
     {

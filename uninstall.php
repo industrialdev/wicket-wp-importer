@@ -1,4 +1,5 @@
 <?php
+
 /**
  * Uninstall: drop the importer's custom tables + options when the plugin is
  * deleted via the WP admin (G7). Leaves no orphaned schema or options.

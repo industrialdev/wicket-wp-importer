@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace WicketImporter\BulkImport\Subscriptions;
 
-use WicketImporter\Mapping\MappingEntry;
 use WicketImporter\Mapping\MappingRepository;
 use WicketImporter\Services\Logger;
 

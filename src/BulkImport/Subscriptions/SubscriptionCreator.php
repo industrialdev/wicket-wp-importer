@@ -5,8 +5,6 @@ declare(strict_types=1);
 namespace WicketImporter\BulkImport\Subscriptions;
 
 use WicketImporter\BulkImport\MemberData;
-use WicketImporter\BulkImport\Subscriptions\SubscriptionResult;
-use WicketImporter\BulkImport\Subscriptions\ResolvedProducts;
 use WicketImporter\Services\Logger;
 
 /**
@@ -91,7 +89,7 @@ class SubscriptionCreator
             }
         }
 
-        /**
+        /*
          * Let extensions adjust after subscription creation (AD10 hook surface;
          * ImportAdapter fires the same action in the OBA flow).
          *
@@ -322,5 +320,4 @@ class SubscriptionCreator
 
         return $product !== false ? $product : null;
     }
-
 }

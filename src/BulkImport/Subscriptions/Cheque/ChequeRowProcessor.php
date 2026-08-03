@@ -7,7 +7,6 @@ namespace WicketImporter\BulkImport\Subscriptions\Cheque;
 use WicketImporter\BulkImport\MemberData;
 use WicketImporter\BulkImport\Subscriptions\OrderCreator;
 use WicketImporter\BulkImport\Subscriptions\ProductResolver;
-use WicketImporter\BulkImport\Subscriptions\ResolvedProducts;
 use WicketImporter\BulkImport\Subscriptions\RowProcessor;
 use WicketImporter\BulkImport\Subscriptions\RowResult;
 use WicketImporter\BulkImport\Subscriptions\SubscriptionCreator;

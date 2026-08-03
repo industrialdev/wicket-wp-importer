@@ -272,7 +272,7 @@ final class ChequeReviewPage
         $count = 0;
         foreach ($rows as $row) {
             if (stripos((string) ($row['import_message'] ?? ''), 'diverg') !== false) {
-                ++$count;
+                $count++;
             }
         }
 

@@ -6,7 +6,6 @@
   "license": "GPL-2.0-or-later",
   "require": {
     "php": ">=8.2",
-    "automattic/jetpack-autoloader": "^2",
     "estebanforge/hyperfields": "^1"
   },
   "require-dev": {
@@ -28,8 +27,5 @@
     "setup-hooks": "mkdir -p .git/hooks && cp .ci/pre-push .git/hooks/pre-push && chmod +x .git/hooks/pre-push && echo 'Git hooks installed to .git/hooks/pre-push'"
   },
   "config": {
-    "allow-plugins": {
-      "automattic/jetpack-autoloader": true
-    }
   }
 }
