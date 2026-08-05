@@ -263,6 +263,11 @@
 	font-weight: 400;
 }
 
+.wicket-importer-sample-btn {
+	font-weight: 400;
+	margin-left: 8px;
+}
+
 /* ---- Flagged-rows table (Task 9.2) --------------------------------- */
 
 .wicket-importer-table-wrap {

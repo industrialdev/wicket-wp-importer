@@ -10,6 +10,10 @@ The **Download CSV template** button on the import screen generates the file
 dynamically from the columns your install actually has registered. That file is
 always the source of truth for *your* environment.
 
+A child theme may add a second **Download sample file** link beside it via the
+`wicket_import_sample_template_url` filter. That link points at a worked example
+(with realistic data rows) and is additive: it never replaces the live button.
+
 These static files are **reference examples**. They show the shape of the data
 and the patterns for extending it, but a live install with extensions active
 will produce a template with more (or different) columns than the files here.
