@@ -3,7 +3,10 @@
 All notable changes to this plugin are documented in this file.
 This project adheres to [Semantic Versioning](https://semver.org/).
 
-<!-- new releases inserted below this line -->
+## [1.0.2] - 2026-08-09
+
+### Maintenance
+- update dependencies
 
 ## [1.0.1] - 2026-08-05
 
@@ -21,4 +24,3 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 ### Maintenance
 - update dependencies
 - **importer:** drop jetpack-autoloader #norelease
-

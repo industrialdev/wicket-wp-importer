@@ -178,13 +178,13 @@ class ImportAdminPage
 		<div id="wicket-import-csv" class="wicket-importer-upload-section">
 			<?php
             $rest = $this->restBase();
-            /*
-             * Worked-example download (optional). Default empty: only the live
-             * Download CSV template button shows. A child theme sets this to a
-             * URL of a sample CSV with realistic data rows so admins see how
-             * to fill the file. The live button stays the source of truth.
-             */
-            $sampleUrl = (string) apply_filters('wicket_import_sample_template_url', '');
+        /*
+         * Worked-example download (optional). Default empty: only the live
+         * Download CSV template button shows. A child theme sets this to a
+         * URL of a sample CSV with realistic data rows so admins see how
+         * to fill the file. The live button stays the source of truth.
+         */
+        $sampleUrl = (string) apply_filters('wicket_import_sample_template_url', '');
         /*
          * CSV upload section (Task 8). Drag-and-drop zone + click-to-browse +
          * file preview, bound by admin.js. The confirm button POSTs to
