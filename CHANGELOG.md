@@ -3,6 +3,18 @@
 All notable changes to this plugin are documented in this file.
 This project adheres to [Semantic Versioning](https://semver.org/).
 
+<!-- new releases inserted below this line -->
+
+## [1.0.3] - 2026-08-09
+
+_Maintenance release; no recorded changes._
+
+
+# Changelog
+
+All notable changes to this plugin are documented in this file.
+This project adheres to [Semantic Versioning](https://semver.org/).
+
 ## [1.0.2] - 2026-08-09
 
 ### Maintenance
