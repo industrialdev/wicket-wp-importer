@@ -162,8 +162,18 @@ class ImportAdminPage
      */
     private function renderUploadScreen(): void
     {
+        /*
+         * Manual (individual) entry mode. Defaults on for backwards
+         * compatibility. A child theme returns false to hide the manual
+         * upload option and its form, leaving CSV as the only input method.
+         * admin.js returns early when the toggle radios are absent, so CSV
+         * stays visible with no dead binding.
+         */
+        $manualEnabled = (bool) apply_filters('wicket_import_manual_entry_enabled', true);
+
         $this->renderPageMetaSlots();
         ?>
+		<?php if ($manualEnabled): ?>
 		<div class="wicket-importer-upload-type">
 			<label class="wicket-importer-toggle">
 				<input type="radio" name="wicket_import_upload_type" value="csv" checked>
@@ -174,6 +184,7 @@ class ImportAdminPage
 				<span><?php esc_html_e('Manual Entry', 'wicket-wp-importer'); ?></span>
 			</label>
 		</div>
+		<?php endif; ?>
 
 		<div id="wicket-import-csv" class="wicket-importer-upload-section">
 			<?php
@@ -257,9 +268,11 @@ class ImportAdminPage
 			</div>
 		</div>
 
+		<?php if ($manualEnabled): ?>
 		<div id="wicket-import-manual" class="wicket-importer-upload-section" hidden>
 			<?php $this->renderIndividualForm(); ?>
 		</div>
+		<?php endif; ?>
 		<?php
     }
 
