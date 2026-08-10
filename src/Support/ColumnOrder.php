@@ -38,7 +38,13 @@ final class ColumnOrder
     public static function forRows(array $rows, ?array $columns = null): array
     {
         if ($columns === null) {
-            $columns = self::registeredColumns();
+            $columns = self::resolvedColumns('bulk');
+        } else {
+            // Caller-supplied columns still get client presentation overrides
+            // (label + order). applyClientOverrides is idempotent, so callers
+            // that already finalized their set pay no cost, and callers passing
+            // raw registered columns are not silently skipped.
+            $columns = self::applyClientOverrides($columns);
         }
 
         // 1. Registered order first.
@@ -68,21 +74,123 @@ final class ColumnOrder
     }
 
     /**
-     * Registered columns via the wicket_import_csv_columns filter (the same
-     * source UploadController::resolveColumns uses). Centralized so the order
-     * resolver doesn't depend on a controller instance.
+     * Apply client-side presentation overrides to a resolved column set.
+     *
+     * Two opt-in filters, both defaulting to empty so an extension that hooks
+     * neither keeps the registered order and labels verbatim (zero behavior
+     * change):
+     *
+     *   - wicket_import_csv_column_labels: array<string,string> canonical key
+     *     => header label. Rebuilds the immutable ColumnDefinition with the
+     *     overridden label (validators/required/aliases/dedup preserved). The
+     *     label is also an accepted header, but aliases still tolerate the
+     *     original spellings, so re-uploading a CSV with either name parses.
+     *   - wicket_import_csv_column_order: list<string> canonical keys in the
+     *     desired order. Unlisted keys append in their current order so no
+     *     column is silently dropped.
+     *
+     * Wired into {@see resolvedColumns()} (the single resolution seam used by
+     * UploadController and forRows) so the CSV template, validation table, and
+     * exports all agree on column presentation.
+     *
+     * @param list<ColumnDefinition> $columns
      *
      * @return list<ColumnDefinition>
      */
-    private static function registeredColumns(): array
+    public static function applyClientOverrides(array $columns): array
+    {
+        // 1. Labels first. Immutable VO -> rebuild with the overridden label.
+        //    Applied before ordering so the order filter sees the final set.
+        $labels = apply_filters('wicket_import_csv_column_labels', [], $columns);
+        if (is_array($labels) && $labels !== []) {
+            $columns = array_map(static function (ColumnDefinition $c) use ($labels): ColumnDefinition {
+                $label = $labels[$c->key] ?? null;
+                if (!is_string($label) || $label === '') {
+                    return $c;
+                }
+
+                return new ColumnDefinition(
+                    key: $c->key,
+                    label: $label,
+                    required: $c->required,
+                    aliases: $c->aliases,
+                    validators: $c->validators,
+                    dedup: $c->dedup,
+                );
+            }, $columns);
+        }
+
+        // 2. Order.
+        return self::ordered($columns);
+    }
+
+    /**
+     * Reorder a resolved column set by the wicket_import_csv_column_order
+     * filter. No-op when the filter returns empty. Unlisted keys append in
+     * their current order; unknown keys in the order list are ignored.
+     *
+     * @param list<ColumnDefinition> $columns
+     *
+     * @return list<ColumnDefinition>
+     */
+    private static function ordered(array $columns): array
+    {
+        $order = apply_filters('wicket_import_csv_column_order', [], $columns);
+        if (!is_array($order) || $order === []) {
+            return $columns;
+        }
+
+        $byKey = [];
+        foreach ($columns as $column) {
+            $byKey[$column->key] = $column;
+        }
+
+        $ordered = [];
+        $seen = [];
+        foreach ($order as $key) {
+            if (is_string($key) && isset($byKey[$key]) && !isset($seen[$key])) {
+                $ordered[] = $byKey[$key];
+                $seen[$key] = true;
+            }
+        }
+
+        // Append any column the order list omitted so nothing is dropped.
+        foreach ($columns as $column) {
+            if (!isset($seen[$column->key])) {
+                $ordered[] = $column;
+                $seen[$column->key] = true;
+            }
+        }
+
+        return $ordered;
+    }
+
+    /**
+     * Resolve the full column set for a context: the wicket_import_csv_columns
+     * filter, merged with the core identity baseline, then client presentation
+     * overrides (label + order) applied.
+     *
+     * Single source of truth shared by UploadController::resolveColumns() and
+     * forRows(), so the CSV template, validation, admin tables, and exports
+     * all resolve columns the same way.
+     *
+     * @param string $context 'bulk' (default) or 'individual'.
+     *
+     * @return list<ColumnDefinition>
+     */
+    public static function resolvedColumns(string $context = 'bulk'): array
     {
         /** @var list<ColumnDefinition> $columns */
-        $columns = apply_filters('wicket_import_csv_columns', [], ['context' => 'bulk']);
+        $columns = apply_filters('wicket_import_csv_columns', [], ['context' => $context]);
 
         // Core always contributes the baseline identity columns and layers the
         // extension's domain columns on top, so export ordering matches the
         // upload/validation resolution. See DefaultColumns::mergeWith().
-        return DefaultColumns::mergeWith(is_array($columns) ? $columns : []);
+        $columns = DefaultColumns::mergeWith(is_array($columns) ? $columns : []);
+
+        // Apply client presentation overrides (label + order). No-op when an
+        // extension hooks neither filter. See applyClientOverrides().
+        return self::applyClientOverrides($columns);
     }
 
     /**

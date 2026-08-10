@@ -7,7 +7,6 @@ namespace WicketImporter\BulkImport\Rest;
 use WicketImporter\Support\ColumnOrder;
 use WicketImporter\Support\CsvExporter;
 use WicketImporter\Support\CsvStorage;
-use WicketImporter\Support\DefaultColumns;
 use WicketImporter\Support\Json;
 use WicketImporter\Support\ReviewSuggester;
 use WicketImporter\Support\SecuresRequests;
@@ -638,15 +637,11 @@ final class UploadController
      */
     private function resolveColumns(string $context = 'bulk'): array
     {
-        /** @var list<ColumnDefinition> $columns */
-        $columns = apply_filters('wicket_import_csv_columns', [], ['context' => $context]);
-
-        // Core always contributes the baseline identity columns (first_name /
-        // last_name / email) and layers the extension's domain columns on top
-        // (AD1 governs domain knowledge, not identity plumbing). Extension
-        // entries win on canonical-key collision so a client can intentionally
-        // redefine a baseline column. See DefaultColumns::mergeWith().
-        return DefaultColumns::mergeWith(is_array($columns) ? $columns : []);
+        // Delegates to the single resolution seam in ColumnOrder so the CSV
+        // template, validation, admin tables, and exports all resolve columns
+        // the same way (wicket_import_csv_columns -> mergeWith -> client
+        // presentation overrides). See ColumnOrder::resolvedColumns().
+        return ColumnOrder::resolvedColumns($context);
     }
 
     /**
