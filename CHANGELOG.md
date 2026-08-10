@@ -5,6 +5,12 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 <!-- new releases inserted below this line -->
 
+## [1.0.5] - 2026-08-10
+
+### Added
+- **importer:** add wicket_import_manual_entry_enabled filter #patch
+
+
 ## [1.0.4] - 2026-08-10
 
 ### Added
