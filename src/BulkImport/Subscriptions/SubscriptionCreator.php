@@ -16,7 +16,9 @@ use WicketImporter\Services\Logger;
  * create_subscriptions() for the async / Action Scheduler context: NO
  * wc_add_notice (no request/session), failures return a SubscriptionResult
  * error VO instead of mutating order status inline, and the
- * wicket_import_create_subscription action fires so extensions can adjust.
+ * wicket_import_subscriptions_created action fires so extensions can adjust
+ * after creation (distinct from ImportAdapter's wicket_import_create_subscription
+ * create-seam, so the OBA create-handler never double-fires here).
  *
  * INPUT-GAP ASSUMPTIONS (the create() contract is fixed as
  * create(int $orderId, MemberData, ResolvedProducts); OrderCreator + the
@@ -90,14 +92,18 @@ class SubscriptionCreator
         }
 
         /*
-         * Let extensions adjust after subscription creation (AD10 hook surface;
-         * ImportAdapter fires the same action in the OBA flow).
+         * Let extensions adjust AFTER subscription creation. This cheque path
+         * has already created its subscriptions, so it MUST NOT fire
+         * wicket_import_create_subscription (the OBA create-seam fired by
+         * ImportAdapter): doing so would make create-handlers mint duplicates.
+         * Past-tense name = already created, adjust only.
          *
-         * @param int    $membershipPostId The wicket_membership post (0 if unresolved).
-         * @param int    $userId           WP user ID (from the order).
-         * @param array  $row              Original CSV row.
+         * @param int       $membershipPostId The wicket_membership post (0 if unresolved).
+         * @param int       $userId           WP user ID (from the order).
+         * @param array     $row              Original CSV row.
+         * @param list<int> $subscriptionIds  The created subscription IDs.
          */
-        do_action('wicket_import_create_subscription', $membershipPostId, $userId, $memberData->row);
+        do_action('wicket_import_subscriptions_created', $membershipPostId, $userId, $memberData->row, $subscriptionIds);
 
         return SubscriptionResult::created($subscriptionIds);
     }
