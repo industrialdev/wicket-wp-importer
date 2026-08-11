@@ -219,12 +219,27 @@ final class ImportAdapter
     {
         $config = $tier->get_config();
         if ($config) {
-            $dates = $config->get_membership_dates(['membership_starts_at' => $starts_iso]);
+            // New-membership contract: pass an empty array. Membership_Config::
+            // get_membership_dates() splits new vs renewal on empty($membership):
+            //   - new      -> start = today
+            //   - renewal  -> start = prior membership_ends_at + 1 day
+            // It does not read a passed membership_starts_at. The previous call
+            // passed a non-empty array, which selected the renewal branch and read
+            // an unset membership_ends_at (undefined-key warning, null), degrading
+            // the base date to 'now' and then adding the renewal +1 day onto every
+            // end/expires/early_renew value it returned.
+            //
+            // The importer's authoritative start ($starts_iso) is still applied to
+            // membership_starts_at in buildMapping(). Threading it into the config's
+            // END-date math lives in the memberships-plugin date cluster.
+            $dates = $config->get_membership_dates([]);
 
             // get_membership_dates always returns start_date/end_date; expires_at and
             // early_renew_at are only set when configured. Backfill for the mapping.
+            // start_date is $starts_iso (authoritative; buildMapping uses it directly
+            // for membership_starts_at). The config's now-based start_date is unused.
             return [
-                'start_date'    => $dates['start_date'] ?? $starts_iso,
+                'start_date'    => $starts_iso,
                 'end_date'      => $dates['end_date'] ?? '',
                 'expires_at'    => $dates['expires_at'] ?? $dates['end_date'] ?? '',
                 'early_renew_at' => $dates['early_renew_at'] ?? $dates['end_date'] ?? '',
