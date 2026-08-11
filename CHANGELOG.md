@@ -5,6 +5,15 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 <!-- new releases inserted below this line -->
 
+## [1.0.6] - 2026-08-11
+
+### Added
+- **importer:** inline no-order subscription creator as default handler
+
+### Fixed
+- **importer:** split cheque subscription hook from OBA create-seam
+
+
 ## [1.0.5] - 2026-08-10
 
 ### Added
