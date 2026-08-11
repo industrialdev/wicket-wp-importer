@@ -209,9 +209,11 @@ final class ImportAdapter
     }
 
     /**
-     * Compute the full date set from the tier's config via the source-of-truth
-     * Membership_Config::get_membership_dates(). Falls back to a +1-year window
-     * only when the tier has no config (mirrors MDP's own default).
+     * Compute the full date set from the tier's config, anchored to the
+     * importer's resolved start. Prefers Membership_Config::
+     * get_membership_dates_for_start() (admit-anchored); falls back to the legacy
+     * get_membership_dates() on older memberships builds. Falls back to a +1-year
+     * window only when the tier has no config (mirrors MDP's own default).
      *
      * @return array{start_date:string,end_date:string,expires_at:string,early_renew_at:string}
      */
@@ -219,25 +221,24 @@ final class ImportAdapter
     {
         $config = $tier->get_config();
         if ($config) {
-            // New-membership contract: pass an empty array. Membership_Config::
-            // get_membership_dates() splits new vs renewal on empty($membership):
-            //   - new      -> start = today
-            //   - renewal  -> start = prior membership_ends_at + 1 day
-            // It does not read a passed membership_starts_at. The previous call
-            // passed a non-empty array, which selected the renewal branch and read
-            // an unset membership_ends_at (undefined-key warning, null), degrading
-            // the base date to 'now' and then adding the renewal +1 day onto every
-            // end/expires/early_renew value it returned.
-            //
-            // The importer's authoritative start ($starts_iso) is still applied to
-            // membership_starts_at in buildMapping(). Threading it into the config's
-            // END-date math lives in the memberships-plugin date cluster.
-            $dates = $config->get_membership_dates([]);
+            // Anchor the full date set to the importer's resolved start (the admit
+            // date), not to today. Membership_Config::get_membership_dates() builds
+            // a new membership off 'now' and ignores any passed start, so end /
+            // expires_at / early_renew_at would all hang off the import run date.
+            // get_membership_dates_for_start() takes the start as a direct argument
+            // and reuses the same anniversary / seasonal / grace / early-renew
+            // engine. Guarded so this stays safe until the memberships build
+            // shipping that method is deployed; the legacy path is the fallback.
+            if (method_exists($config, 'get_membership_dates_for_start')) {
+                $dates = $config->get_membership_dates_for_start($starts_iso);
+            } else {
+                $dates = $config->get_membership_dates([]);
+            }
 
-            // get_membership_dates always returns start_date/end_date; expires_at and
-            // early_renew_at are only set when configured. Backfill for the mapping.
-            // start_date is $starts_iso (authoritative; buildMapping uses it directly
-            // for membership_starts_at). The config's now-based start_date is unused.
+            // Both paths return start_date/end_date; expires_at and early_renew_at
+            // are only set when configured. Backfill for the mapping. start_date is
+            // $starts_iso (authoritative; buildMapping uses it directly for
+            // membership_starts_at). The method's own start_date is the same value.
             return [
                 'start_date'    => $starts_iso,
                 'end_date'      => $dates['end_date'] ?? '',
