@@ -5,6 +5,12 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 <!-- new releases inserted below this line -->
 
+## [1.0.8] - 2026-08-12
+
+### Fixed
+- **dates:** prevent inverted end<=start window on legacy memberships builds (WWID-2199)
+
+
 ## [1.0.7] - 2026-08-11
 
 ### Fixed
