@@ -102,14 +102,22 @@ final class ImportAdapter
         $wicket_uuid_raw = $controller->create_mdp_record($mapping);
 
         if (empty($wicket_uuid_raw)) {
-            // create_mdp_record() stashes its MDP WP_Error detail in a private
-            // $error_message with no public accessor (it surfaces via wc_add_notice
-            // in checkout context, not here). We return a precise method-level
-            // reason; the staging row still records the failure. The dedup check
-            // inside create_mdp_record means a retry will return the existing UUID.
-            return MembershipResult::failed(
-                'Membership_Controller::create_mdp_record returned no UUID (MDP assign or dedup-query failure).'
-            );
+            // create_mdp_record() returns '' on any MDP assign failure (its
+            // internal dedup means a retry returns an existing UUID). Since the
+            // memberships fix branch it exposes the real MDP error via
+            // get_error_message() and also wc_log_mship_error()s it; include it
+            // here so the row shows the actual cause (e.g. a 422 for an inverted
+            // date window) rather than a generic method-level guess. The
+            // method_exists guard keeps older builds (no accessor) on the legacy
+            // message instead of fatalling.
+            $mdp_error = method_exists($controller, 'get_error_message')
+                ? trim((string) $controller->get_error_message())
+                : '';
+            $reason = $mdp_error !== ''
+                ? sprintf('Membership_Controller::create_mdp_record failed: %s', $mdp_error)
+                : 'Membership_Controller::create_mdp_record returned no UUID (MDP assign or dedup-query failure).';
+
+            return MembershipResult::failed($reason);
         }
         $wicket_uuid = (string) $wicket_uuid_raw;
         $mapping['membership_wicket_uuid'] = $wicket_uuid;
@@ -233,6 +241,18 @@ final class ImportAdapter
                 $dates = $config->get_membership_dates_for_start($starts_iso);
             } else {
                 $dates = $config->get_membership_dates([]);
+                // Legacy-fallback safety (WWID-2199): get_membership_dates([])
+                // anchors every date on today for a new membership and ignores
+                // our admit-derived start. On a seasonal config with a fixed
+                // period end (e.g. Dec 31) that produces end_date <= start
+                // whenever the admit date lands in a future season, and the MDP
+                // then 422-rejects the assign (ends_at must be after starts_at).
+                // get_membership_dates_for_start() is the real fix; this roll is
+                // the version-agnostic backstop so an older memberships build can
+                // never emit an inverted window. end-derived expires_at advances
+                // in lockstep; early_renew_at is start-derived and stays put.
+                $dates['end_date'] = $this->rollSeasonalEndPastStart($dates['end_date'] ?? '', $starts_iso);
+                $dates['expires_at'] = $this->rollSeasonalEndPastStart($dates['expires_at'] ?? '', $starts_iso);
             }
 
             // Both paths return start_date/end_date; expires_at and early_renew_at
@@ -259,6 +279,35 @@ final class ImportAdapter
             'expires_at'    => $end_iso,
             'early_renew_at' => $end_iso,
         ];
+    }
+
+    /**
+     * Advance a seasonal end/expiry ISO forward by whole years until it is
+     * strictly after the resolved start.
+     *
+     * Backstop for the legacy get_membership_dates([]) fallback (WWID-2199): on
+     * a fixed-end seasonal config that method anchors end on today, so a future
+     * admit start produces end <= start and the MDP rejects the assign. Both
+     * values share the same MDP-timezone offset, so a string compare is a valid
+     * chronological ordering here. Capped so a misconfigured end can never loop.
+     *
+     * @param string $iso   End or expiry ISO (may be '').
+     * @param string $floor Start ISO the value must strictly exceed.
+     * @return string Rolled-forward ISO, or the original when already valid / empty.
+     */
+    private function rollSeasonalEndPastStart(string $iso, string $floor): string
+    {
+        if ($iso === '' || $iso > $floor) {
+            return $iso;
+        }
+
+        $dt = \DateTime::createFromFormat(\DateTime::ATOM, $iso) ?: new \DateTime($iso);
+        for ($i = 0; $i < 25 && $iso <= $floor; $i++) {
+            $dt->modify('+1 year');
+            $iso = $dt->format('c');
+        }
+
+        return $iso;
     }
 
     /**
