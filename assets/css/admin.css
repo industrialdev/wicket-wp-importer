@@ -274,6 +274,7 @@
 .wicket-importer-table-wrap {
 	overflow-x: auto;
 	margin: 16px 0;
+	white-space: nowrap;
 }
 
 .wicket-importer-flagged-table th,
