@@ -5,6 +5,12 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 <!-- new releases inserted below this line -->
 
+## [1.0.11] - 2026-08-13
+
+### Other
+- Prevent text from wrapping onto a new line. This fixes the issue when the table shows content in a stacked way.
+
+
 ## [1.0.10] - 2026-08-13
 
 ### Fixed
