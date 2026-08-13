@@ -5,6 +5,12 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 <!-- new releases inserted below this line -->
 
+## [1.0.10] - 2026-08-13
+
+### Fixed
+- **importer:** count conflict rows in cheque review summary and table
+
+
 ## [1.0.9] - 2026-08-13
 
 ### Fixed
