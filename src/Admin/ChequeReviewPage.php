@@ -68,7 +68,7 @@ final class ChequeReviewPage
         }
 
         $summary = $plugin->StagingTable()->getImportSummary($sessionId);
-        $rows = $plugin->StagingTable()->getByImportStatus($sessionId, ['failed', 'needs_review']);
+        $rows = $plugin->StagingTable()->getByImportStatus($sessionId, ['failed', 'needs_review', 'email_conflict', 'skipped_active_membership']);
 
         $this->renderSummary($summary, $batch);
         $this->renderDivergenceNotice($rows);
@@ -237,7 +237,15 @@ final class ChequeReviewPage
     {
         $processed = (int) ($summary['imported'] ?? 0) + (int) ($summary['updated'] ?? 0);
         $failed = (int) ($summary['failed'] ?? 0);
-        $needsReview = (int) ($summary['needs_review'] ?? 0);
+        // WWID-2200 (sibling): mirror BatchProcessor::tally, which folds
+        // email_conflict and skipped_active_membership into the stored
+        // phase1_needs_review column. Without this, a cheque batch with an
+        // email-conflict row undercounted "needs review" and (in the total
+        // fallback below) undercounted "total", making the conflict invisible
+        // on this screen just like on the OBA confirmation summary.
+        $needsReview = (int) ($summary['needs_review'] ?? 0)
+            + (int) ($summary['email_conflict'] ?? 0)
+            + (int) ($summary['skipped_active_membership'] ?? 0);
         $total = (int) ($batch['phase1_total'] ?? $batch['csv_row_count'] ?? 0);
         if ($total === 0) {
             // Fallback when the batches row has no row count yet.

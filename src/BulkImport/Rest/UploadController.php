@@ -588,7 +588,7 @@ final class UploadController
     public function handleErrorCsv(WP_REST_Request $request): never
     {
         $sessionId = (string) ($request['id'] ?? '');
-        $rows = Plugin::get_instance()->StagingTable()->getByImportStatus($sessionId, ['failed', 'needs_review']);
+        $rows = Plugin::get_instance()->StagingTable()->getByImportStatus($sessionId, ['failed', 'needs_review', 'email_conflict', 'skipped_active_membership']);
 
         (new CsvExporter())->download(
             sprintf('import-errors-%s.csv', $sessionId),
