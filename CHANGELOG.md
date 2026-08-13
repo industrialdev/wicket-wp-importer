@@ -5,6 +5,12 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 <!-- new releases inserted below this line -->
 
+## [1.0.9] - 2026-08-13
+
+### Fixed
+- **importer:** surface skipped/conflict rows in import summary
+
+
 ## [1.0.8] - 2026-08-12
 
 ### Fixed
