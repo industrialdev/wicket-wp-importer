@@ -113,6 +113,7 @@
 .wicket-importer-summary-stat.is-valid   { color: #00a32a; }
 .wicket-importer-summary-stat.is-flagged { color: #d63638; }
 .wicket-importer-summary-stat.is-review  { color: #996800; }
+.wicket-importer-summary-stat.is-skipped { color: #646970; }
 
 .wicket-importer-summary-sep {
 	color: #c3c4c7;

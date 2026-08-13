@@ -410,7 +410,20 @@ class ImportAdminPage
 
         $succeeded = ($counts['imported'] ?? 0) + ($counts['updated'] ?? 0);
         $failed = $counts['failed'] ?? 0;
-        $review = $counts['needs_review'] ?? 0;
+        // WWID-2200: email_conflict and skipped_active_membership are
+        // actionable states an admin must review. BatchProcessor::tally folds
+        // exactly these two into phase1_needs_review (the stored per-batch
+        // tally at src/BulkImport/Subscriptions/BatchProcessor.php), so the
+        // history view already counts them under needs_review. Mirror that
+        // here so the confirmation summary agrees with the rest of the plugin
+        // instead of inventing a new bucket.
+        $review = ($counts['needs_review'] ?? 0)
+            + ($counts['email_conflict'] ?? 0)
+            + ($counts['skipped_active_membership'] ?? 0);
+        // Plain skipped = the adapter deliberately skipped the row (benign,
+        // e.g. an extension short-circuit). Keep it as its own neutral stat
+        // so it stays visible without overstating it as needing review.
+        $skipped = $counts['skipped'] ?? 0;
 
         // Re-fire meta so post-import state (e.g. Next Bar ID) is reflected.
         $this->renderPageMetaSlots();
@@ -450,6 +463,19 @@ class ImportAdminPage
         );
         ?>
 				</span>
+				<?php if ($skipped > 0) : ?>
+					<span class="wicket-importer-summary-sep" aria-hidden="true">&middot;</span>
+					<span class="wicket-importer-summary-stat is-skipped">
+						<?php
+            echo esc_html(
+                sprintf(
+                    _n('%d skipped', '%d skipped', $skipped, 'wicket-wp-importer'),
+                    $skipped
+                )
+            );
+			    ?>
+					</span>
+				<?php endif; ?>
 				<?php if ($review > 0) : ?>
 					<span class="wicket-importer-summary-sep" aria-hidden="true">&middot;</span>
 					<span class="wicket-importer-summary-stat is-review">
