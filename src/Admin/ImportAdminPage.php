@@ -6,6 +6,7 @@ namespace WicketImporter\Admin;
 
 use HyperFields\HyperFields;
 use WicketImporter\Support\ColumnOrder;
+use WicketImporter\Support\CsvStorage;
 use WicketImporter\Support\Json;
 use WicketImporter\Support\SecuresRequests;
 use WicketImporter\ValueObjects\ValidationResult;
@@ -74,6 +75,8 @@ class ImportAdminPage
         //      has a submenu - so the duplicate 'Wicket' child never appears, and
         //      the order is Settings then Importer.
         add_action('admin_menu', [$this, 'registerMenu'], 21);
+        // Escape hatch for a stuck import session (see handleClearSession).
+        add_action('admin_post_wicket_import_clear_session', [self::class, 'handleClearSession']);
     }
 
     /**
@@ -171,6 +174,34 @@ class ImportAdminPage
          * stays visible with no dead binding.
          */
         $manualEnabled = (bool) apply_filters('wicket_import_manual_entry_enabled', true);
+
+        /*
+         * Stuck-session escape hatch. When a prior upload left pending rows
+         * behind (run never started or crashed pre-claim), every new upload
+         * 409s until the 24h TTL expires, and the only message pointed at a
+         * DELETE endpoint no screen exposed. Surface the blocker here with a
+         * link to its History detail, where "Clear session" lives.
+         */
+        $blockingSession = Plugin::get_instance()->StagingTable()->hasActiveSession();
+        if ($blockingSession !== null) {
+            $batch = Plugin::get_instance()->BatchProcessor()->getBatchBySession($blockingSession);
+            $manageUrl = $this->historyScreenUrl();
+            if ($batch !== null) {
+                $manageUrl = add_query_arg('batch_id', $batch['batch_id'], $manageUrl);
+            }
+            ?>
+			<div class="notice notice-warning inline wicket-importer-blocked-session">
+				<p>
+					<?php esc_html_e('An import session is already in progress. New uploads are blocked until it is completed or cleared.', 'wicket-wp-importer'); ?>
+				</p>
+				<p>
+					<a class="button button-primary" href="<?php echo esc_url($manageUrl); ?>">
+						<?php esc_html_e('Review or clear this session', 'wicket-wp-importer'); ?>
+					</a>
+				</p>
+			</div>
+			<?php
+        }
 
         $this->renderPageMetaSlots();
         ?>
@@ -1009,6 +1040,21 @@ class ImportAdminPage
      */
     private function renderHistoryScreen(): void
     {
+        $notice = isset($_GET['wicket_import_notice']) ? sanitize_key(wp_unslash($_GET['wicket_import_notice'])) : '';
+        if ($notice === 'session_cleared') {
+            ?>
+			<div class="notice notice-success is-dismissible">
+				<p><?php esc_html_e('Import session cleared. New uploads are unblocked.', 'wicket-wp-importer'); ?></p>
+			</div>
+			<?php
+        } elseif ($notice === 'session_clear_failed') {
+            ?>
+			<div class="notice notice-error">
+				<p><?php esc_html_e('Could not clear that session. The batch may have been removed already.', 'wicket-wp-importer'); ?></p>
+			</div>
+			<?php
+        }
+
         $batchId = isset($_GET['batch_id']) ? sanitize_text_field(wp_unslash($_GET['batch_id'])) : '';
         if ($batchId !== '' && preg_match(self::SESSION_ID_PATTERN, $batchId) === 1) {
             $this->renderHistoryDetail($batchId);
@@ -1120,7 +1166,7 @@ class ImportAdminPage
 					<span><?php esc_html_e('Status', 'wicket-wp-importer'); ?></span>
 					<select name="status">
 						<option value=""><?php esc_html_e('Any', 'wicket-wp-importer'); ?></option>
-						<?php foreach (['pending', 'running', 'completed', 'failed'] as $opt) : ?>
+						<?php foreach (['pending', 'running', 'completed', 'failed', 'cleared'] as $opt) : ?>
 							<option value="<?php echo esc_attr($opt); ?>" <?php selected($status, $opt); ?>>
 								<?php echo esc_html(ucfirst($opt)); ?>
 							</option>
@@ -1225,6 +1271,60 @@ class ImportAdminPage
     }
 
     /**
+     * admin-post handler: clear a stuck import session (History detail
+     * "Clear session" button).
+     *
+     * A session whose staged rows are still pending blocks all new uploads
+     * (hasActiveSession 409 gate) until the 24h TTL cron expires it. When the
+     * validation screen that hosted the only Clear button is gone (admin left
+     * the flow, browser closed), this is the escape hatch. Deletes the staged
+     * rows + retained source CSV and marks the batches row terminal
+     * ('cleared') so History stops showing it as running.
+     */
+    public static function handleClearSession(): void
+    {
+        if (!current_user_can('manage_options')) {
+            wp_die(esc_html__('You do not have permission to do this.', 'wicket-wp-importer'), 403);
+        }
+
+        check_admin_referer('wicket_import_clear_session', '_wpnonce');
+
+        $historyUrl = admin_url('admin.php?page=wicket-wp-importer&tab=history');
+
+        $batchId = isset($_POST['batch_id']) ? sanitize_text_field(wp_unslash($_POST['batch_id'])) : '';
+        $batchProcessor = Plugin::get_instance()->BatchProcessor();
+        $batch = ($batchId !== '')
+            ? $batchProcessor->getBatchBySession($batchProcessor->getSessionByBatch($batchId) ?? '')
+            : null;
+
+        // Server-side guard: the button only renders for 'running' batches, but
+        // the POST itself must re-check. A stale tab or resubmit must not wipe
+        // the audit trail (results, CSVs) of a completed import.
+        if ($batch === null || $batch['status'] !== 'running') {
+            wp_safe_redirect(add_query_arg('wicket_import_notice', 'session_clear_failed', $historyUrl));
+            exit;
+        }
+
+        $sessionId = (string) $batch['session_id'];
+
+        $plugin = Plugin::get_instance();
+        // Finalize the batches row BEFORE deleting the rows so the stored phase
+        // stats tally from real data instead of zeroing out.
+        $plugin->BatchProcessor()->finishRunBySession($sessionId, 'cleared');
+        $plugin->StagingTable()->deleteSession($sessionId);
+        CsvStorage::delete($sessionId);
+
+        (new \WicketImporter\Services\Logger())->info('Import session cleared by admin.', [
+            'batch_id'   => $batchId,
+            'session_id' => $sessionId,
+            'user_id'    => get_current_user_id(),
+        ]);
+
+        wp_safe_redirect(add_query_arg('wicket_import_notice', 'session_cleared', $historyUrl));
+        exit;
+    }
+
+    /**
      * Per-batch detail (drill-down). Header summary + paginated per-row
      * staged_records table.
      */
@@ -1300,11 +1400,24 @@ class ImportAdminPage
 			</table>
 
 			<?php $sourceRest = $this->restBase(); ?>
-			<p>
+			<div class="wicket-importer-batch-actions">
 				<a class="button" href="<?php echo esc_url(wp_nonce_url($sourceRest . '/session/' . $batch->session_id . '/source-csv', 'wp_rest', '_wpnonce')); ?>">
 					<?php esc_html_e('Download source CSV', 'wicket-wp-importer'); ?>
 				</a>
-			</p>
+				<?php if ($batch->status === 'running') : ?>
+					<form
+						method="post"
+						action="<?php echo esc_url(admin_url('admin-post.php')); ?>"
+						class="wicket-importer-clear-session-form"
+						onsubmit="return confirm('<?php echo esc_js(__('Clear this session? The staged rows will be deleted and the import can no longer be run.', 'wicket-wp-importer')); ?>');"
+					>
+						<input type="hidden" name="action" value="wicket_import_clear_session">
+						<input type="hidden" name="batch_id" value="<?php echo esc_attr($batch->batch_id); ?>">
+						<?php wp_nonce_field('wicket_import_clear_session', '_wpnonce'); ?>
+						<button type="submit" class="button button-link-delete"><?php esc_html_e('Clear session', 'wicket-wp-importer'); ?></button>
+					</form>
+				<?php endif; ?>
+			</div>
 
 			<h2><?php esc_html_e('Rows', 'wicket-wp-importer'); ?> (<?php echo (int) $count; ?>)</h2>
 

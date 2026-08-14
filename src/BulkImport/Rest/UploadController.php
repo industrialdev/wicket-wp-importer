@@ -402,8 +402,12 @@ final class UploadController
     public function handleSessionDelete(WP_REST_Request $request)
     {
         $sessionId = (string) ($request['id'] ?? '');
-        Plugin::get_instance()->StagingTable()->deleteSession($sessionId);
-        // Cascade: drop the retained source CSV with its session.
+        $plugin = Plugin::get_instance();
+        // Finalize the batches row BEFORE deleting the rows so the stored phase
+        // stats tally from real data instead of zeroing out (was stuck 'running'
+        // since upload). Then drop the rows and the retained source CSV.
+        $plugin->BatchProcessor()->finishRunBySession($sessionId, 'cleared');
+        $plugin->StagingTable()->deleteSession($sessionId);
         CsvStorage::delete($sessionId);
 
         return new WP_REST_Response([

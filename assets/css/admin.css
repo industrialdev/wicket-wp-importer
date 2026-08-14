@@ -484,3 +484,15 @@
 	font-size: 16px;
 	padding: 0 10px;
 }
+
+/* History detail: "Clear session" escape hatch sits beside the source-CSV
+ * download link on one row. */
+.wicket-importer-batch-actions {
+	margin-top: 8px;
+}
+
+.wicket-importer-batch-actions .wicket-importer-clear-session-form {
+	display: inline-block;
+	margin-left: 8px;
+	vertical-align: middle;
+}

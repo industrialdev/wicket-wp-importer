@@ -156,6 +156,23 @@ final class BatchProcessor
     }
 
     /**
+     * Resolve a batch_id to its session_id without loading the whole row.
+     * Used by the admin clear-session handler, which only knows batch_id.
+     */
+    public function getSessionByBatch(string $batchId): ?string
+    {
+        global $wpdb;
+        $sessionId = $wpdb->get_var(
+            $wpdb->prepare(
+                "SELECT session_id FROM {$wpdb->prefix}" . self::TABLE . ' WHERE batch_id = %s LIMIT 1',
+                $batchId
+            )
+        );
+
+        return (is_string($sessionId) && $sessionId !== '') ? $sessionId : null;
+    }
+
+    /**
      * Read a session's batch row (status + phase stats). The Review UI uses it
      * to decide whether the "Proceed to Phase 2" gate is armed (status
      * pending_review).
