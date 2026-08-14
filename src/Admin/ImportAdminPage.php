@@ -8,6 +8,7 @@ use HyperFields\HyperFields;
 use WicketImporter\Support\ColumnOrder;
 use WicketImporter\Support\Json;
 use WicketImporter\Support\SecuresRequests;
+use WicketImporter\ValueObjects\ValidationResult;
 use WicketImporter\WicketImporter as Plugin;
 
 /**
@@ -423,7 +424,10 @@ class ImportAdminPage
         // Plain skipped = the adapter deliberately skipped the row (benign,
         // e.g. an extension short-circuit). Keep it as its own neutral stat
         // so it stays visible without overstating it as needing review.
-        $skipped = $counts['skipped'] ?? 0;
+        // Rows still 'pending' here failed validation and were never claimed
+        // for import, so they're permanently excluded too — fold them in so
+        // succeeded + failed + skipped + review accounts for every row.
+        $skipped = ($counts['skipped'] ?? 0) + ($counts['pending'] ?? 0);
 
         // Re-fire meta so post-import state (e.g. Next Bar ID) is reflected.
         $this->renderPageMetaSlots();
@@ -652,6 +656,7 @@ class ImportAdminPage
 				    $name = trim((string) ($data['first_name'] ?? '') . ' ' . (string) ($data['last_name'] ?? ''));
 				    $email = (string) ($data['email'] ?? '');
 				    $status = (string) ($row['import_status'] ?? '');
+				    $displayStatus = $this->effectiveImportStatus($status, (string) ($row['validation_status'] ?? ''));
 				    $message = (string) ($row['import_message'] ?? '');
 				    $uuid = isset($row['mdp_uuid']) ? (string) $row['mdp_uuid'] : '';
 
@@ -704,7 +709,7 @@ class ImportAdminPage
 						    ?></td>
 						<?php endforeach; ?>
 						<td><?php echo $uuid !== '' ? esc_html($uuid) : '&mdash;'; ?></td>
-						<td><?php $this->renderStatusBadge($status); ?></td>
+						<td><?php $this->renderStatusBadge($displayStatus); ?></td>
 						<td><?php echo esc_html($message); ?></td>
 					</tr>
 				<?php endforeach; ?>
@@ -861,13 +866,37 @@ class ImportAdminPage
     }
 
     /**
+     * Resolve the import_status to actually display for a row.
+     *
+     * import_status defaults to 'pending' for every staged row and only
+     * moves to a terminal status when the row is eligible for import
+     * (validation_status IN ('valid', 'warning')) and gets claimed — see
+     * claimChunk()/claimImportableInSession(). A row that failed validation
+     * is never claimed, so its import_status stays 'pending' forever, even
+     * after the batch is finished. Relabel that case as 'skipped' so it
+     * isn't confused with a row genuinely still queued for processing.
+     */
+    private function effectiveImportStatus(string $importStatus, string $validationStatus): string
+    {
+        if ($importStatus !== 'pending') {
+            return $importStatus;
+        }
+
+        $eligible = [ValidationResult::STATUS_VALID, ValidationResult::STATUS_WARNING];
+
+        return in_array($validationStatus, $eligible, true) ? $importStatus : 'skipped';
+    }
+
+    /**
      * Status badge for a validation / import status string (Task 9.2).
      *
      * Shared by both the validation table (validation_status) and the
      * confirmation results table (import_status) once Task 10 lands — kept
      * here so both surfaces use one status -> label/variant mapping.
      *
-     * @param string $status validation_status or import_status value.
+     * @param string $status validation_status or import_status value. For
+     *                       import_status, pass it through
+     *                       {@see effectiveImportStatus()} first.
      */
     private function renderStatusBadge(string $status): void
     {
@@ -1297,13 +1326,13 @@ class ImportAdminPage
 							<tr>
 								<td><?php echo (int) $row->row_index; ?></td>
 								<td>
-									<div><strong><?php echo esc_html($row->validation_status); ?></strong></div>
+									<?php $this->renderStatusBadge((string) $row->validation_status); ?>
 									<?php if ($row->validation_message) : ?>
 										<div class="wicket-importer-history-msg"><?php echo esc_html($row->validation_message); ?></div>
 									<?php endif; ?>
 								</td>
 								<td>
-									<div><strong><?php echo esc_html($row->import_status); ?></strong></div>
+									<?php $this->renderStatusBadge($this->effectiveImportStatus((string) $row->import_status, (string) $row->validation_status)); ?>
 									<?php if ($row->import_message) : ?>
 										<div class="wicket-importer-history-msg"><?php echo esc_html($row->import_message); ?></div>
 									<?php endif; ?>
