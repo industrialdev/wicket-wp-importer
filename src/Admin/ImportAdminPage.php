@@ -1216,8 +1216,7 @@ class ImportAdminPage
 							<th><?php esc_html_e('User', 'wicket-wp-importer'); ?></th>
 							<th><?php esc_html_e('Status', 'wicket-wp-importer'); ?></th>
 							<th><?php esc_html_e('Rows', 'wicket-wp-importer'); ?></th>
-							<th><?php esc_html_e('Phase 1', 'wicket-wp-importer'); ?></th>
-							<th><?php esc_html_e('Phase 2', 'wicket-wp-importer'); ?></th>
+							<th><?php esc_html_e('Progress', 'wicket-wp-importer'); ?></th>
 							<th><?php esc_html_e('Duration', 'wicket-wp-importer'); ?></th>
 							<th><?php esc_html_e('Finished', 'wicket-wp-importer'); ?></th>
 							<th class="wicket-importer-history-actions-col"><?php esc_html_e('Actions', 'wicket-wp-importer'); ?></th>
@@ -1226,8 +1225,13 @@ class ImportAdminPage
 					<tbody>
 						<?php foreach ($rows as $row) :
 						    $detailUrl = add_query_arg('batch_id', $row->batch_id, $baseUrl);
-						    $phase1 = sprintf('%d / %d / %d', (int) $row->phase1_succeeded, (int) $row->phase1_failed, (int) $row->phase1_needs_review);
-						    $phase2 = sprintf('%d / %d / %d', (int) $row->phase2_succeeded, (int) $row->phase2_failed, (int) $row->phase2_needs_review);
+						    $progress = self::progressLabel([
+						        'status'              => (string) $row->status,
+						        'phase1_succeeded'    => (int) $row->phase1_succeeded,
+						        'phase1_failed'       => (int) $row->phase1_failed,
+						        'phase1_needs_review' => (int) $row->phase1_needs_review,
+						        'phase2_total'        => (int) $row->phase2_total,
+						    ]);
 						    $started = mysql2date('Y-m-d H:i', $row->created_at);
 						    $finished = $row->finished_at ? mysql2date('Y-m-d H:i', $row->finished_at) : '—';
 						    $duration = self::formatDuration((string) $row->created_at, (string) $row->finished_at);
@@ -1242,8 +1246,7 @@ class ImportAdminPage
 								<td><?php echo esc_html($row->user_display_name ?: '—'); ?></td>
 								<td><?php echo esc_html($row->status); ?></td>
 								<td><?php echo esc_html((string) ((int) $row->csv_row_count)); ?></td>
-								<td><?php echo esc_html($phase1); ?></td>
-								<td><?php echo esc_html($phase2); ?></td>
+								<td><?php echo esc_html($progress); ?></td>
 								<td><?php echo esc_html($duration); ?></td>
 								<td><?php echo esc_html($finished); ?></td>
 								<td class="wicket-importer-history-actions-col">
@@ -1286,6 +1289,52 @@ class ImportAdminPage
 			<?php endif; ?>
 		</div>
 		<?php
+    }
+
+    /**
+     * Human-readable progress sentence for a History list row, derived from
+     * the batch's status + phase counts. Replaces the old "Phase 1 / Phase 2"
+     * count columns, which read as raw tallies and told the admin nothing
+     * about where the import actually stands.
+     *
+     * Pure (no WP calls) so the unit suite covers it directly. Phase names
+     * follow the flow: Phase 1 = member import (person + membership),
+     * Phase 2 = cheque/lockbox subscription batch (cheque flow only).
+     *
+     * @param array<string,mixed> $batch status + phase1_* + phase2_total keys.
+     */
+    public static function progressLabel(array $batch): string
+    {
+        $settledPhase1 = (int) ($batch['phase1_succeeded'] ?? 0)
+            + (int) ($batch['phase1_failed'] ?? 0)
+            + (int) ($batch['phase1_needs_review'] ?? 0);
+        $hasPhase2 = (int) ($batch['phase2_total'] ?? 0) > 0;
+
+        switch ((string) ($batch['status'] ?? '')) {
+            case 'running':
+                // A run is in flight only once rows have settled; a running
+                // batch with no settled rows was staged but never run (the
+                // stuck-session case the clear button exists for).
+                return $settledPhase1 > 0
+                    ? __('Import in progress', 'wicket-wp-importer')
+                    : __('Awaiting import run', 'wicket-wp-importer');
+            case 'pending_review':
+                return $hasPhase2
+                    ? __('Phase 1 complete, awaiting lockbox', 'wicket-wp-importer')
+                    : __('Import needs review', 'wicket-wp-importer');
+            case 'completed':
+                return $hasPhase2
+                    ? __('Lockbox complete', 'wicket-wp-importer')
+                    : __('Members imported', 'wicket-wp-importer');
+            case 'failed':
+                return __('Import failed', 'wicket-wp-importer');
+            case 'cleared':
+                return $settledPhase1 > 0
+                    ? __('Cleared mid-run', 'wicket-wp-importer')
+                    : __('Cleared before run', 'wicket-wp-importer');
+            default:
+                return ucfirst((string) ($batch['status'] ?? ''));
+        }
     }
 
     /**
