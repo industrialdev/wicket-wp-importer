@@ -5,6 +5,12 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 <!-- new releases inserted below this line -->
 
+## [1.0.15] - 2026-08-14
+
+### Added
+- **importer:** human-readable progress column in History list
+
+
 ## [1.0.14] - 2026-08-14
 
 ### Added
