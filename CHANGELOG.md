@@ -5,6 +5,12 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 <!-- new releases inserted below this line -->
 
+## [1.0.13] - 2026-08-14
+
+### Fixed
+- **importer:** add escape hatch for stuck import sessions
+
+
 ## [1.0.12] - 2026-08-14
 
 ### Fixed
