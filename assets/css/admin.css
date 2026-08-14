@@ -496,3 +496,9 @@
 	margin-left: 8px;
 	vertical-align: middle;
 }
+
+/* History list: keep the Actions column tight; the inline clear form must
+ * not stretch the row height. */
+.wicket-importer-history-table .wicket-importer-clear-session-form {
+	margin: 0;
+}

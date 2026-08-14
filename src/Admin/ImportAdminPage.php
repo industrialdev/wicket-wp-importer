@@ -1220,6 +1220,7 @@ class ImportAdminPage
 							<th><?php esc_html_e('Phase 2', 'wicket-wp-importer'); ?></th>
 							<th><?php esc_html_e('Duration', 'wicket-wp-importer'); ?></th>
 							<th><?php esc_html_e('Finished', 'wicket-wp-importer'); ?></th>
+							<th class="wicket-importer-history-actions-col"><?php esc_html_e('Actions', 'wicket-wp-importer'); ?></th>
 						</tr>
 					</thead>
 					<tbody>
@@ -1245,6 +1246,23 @@ class ImportAdminPage
 								<td><?php echo esc_html($phase2); ?></td>
 								<td><?php echo esc_html($duration); ?></td>
 								<td><?php echo esc_html($finished); ?></td>
+								<td class="wicket-importer-history-actions-col">
+									<?php if ($row->status === 'running') : ?>
+										<form
+											method="post"
+											action="<?php echo esc_url(admin_url('admin-post.php')); ?>"
+											class="wicket-importer-clear-session-form"
+											onsubmit="return confirm('<?php echo esc_js(__('Clear this session? The staged rows will be deleted and the import can no longer be run.', 'wicket-wp-importer')); ?>');"
+										>
+											<input type="hidden" name="action" value="wicket_import_clear_session">
+											<input type="hidden" name="batch_id" value="<?php echo esc_attr($row->batch_id); ?>">
+											<?php wp_nonce_field('wicket_import_clear_session', '_wpnonce'); ?>
+											<button type="submit" class="button button-link-delete"><?php esc_html_e('Clear session', 'wicket-wp-importer'); ?></button>
+										</form>
+									<?php else : ?>
+										&mdash;
+									<?php endif; ?>
+								</td>
 							</tr>
 						<?php endforeach; ?>
 					</tbody>
