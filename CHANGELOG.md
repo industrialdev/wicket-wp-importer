@@ -5,6 +5,12 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 <!-- new releases inserted below this line -->
 
+## [1.0.17] - 2026-08-17
+
+### Fixed
+- **admin:** opaque frozen headers + sticky header row on flagged-rows table
+
+
 ## [1.0.16] - 2026-08-17
 
 ### Fixed
