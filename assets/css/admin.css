@@ -290,7 +290,18 @@
 }
 
 /*
- * Frozen columns (WWID-2253): Line + the first two data columns (for OBA:
+ * Sticky header row (WWID-2253): the header follows the vertical scroll so
+ * the admin always knows which column is which. Needs an opaque background
+ * or the scrolled rows show through.
+ */
+.wicket-importer-flagged-table thead th {
+	position: sticky;
+	top: var(--wp-admin--admin-bar--height, 0px);
+	background: #fff;
+	z-index: 1;
+}
+
+/* Frozen columns (WWID-2253): Line + the first two data columns (for OBA:
  * last_name, first_name) stay visible while the admin scrolls right toward
  * the Status/Reason columns. CSS does the sticking; the sticky left offsets
  * are measured from the header row by applyFrozenColumns() in admin.js
@@ -301,6 +312,14 @@
 .wicket-importer-flagged-table td:nth-child(-n+3) {
 	position: sticky;
 	z-index: 1;
+}
+
+/* Corner cells (frozen header cells) sit above both the sticky header row
+   and the frozen body cells; also need an opaque background or the scrolled
+   header text shows through them. */
+.wicket-importer-flagged-table thead th:nth-child(-n+3) {
+	z-index: 2;
+	background: #fff;
 }
 
 /* Sticky cells need an opaque background or the scrolled rows show through. */
