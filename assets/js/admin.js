@@ -57,7 +57,42 @@
 		bindProceedButton(page);
 		bindRestartButton(page);
 		bindIndividualForm();
+		applyFrozenColumns();
+		window.addEventListener('resize', applyFrozenColumns);
+		window.addEventListener('load', applyFrozenColumns);
 	});
+
+	/**
+	 * Frozen columns on the flagged-rows table (WWID-2253): Line + the first
+	 * two data columns stay visible while the admin scrolls right toward the
+	 * Status/Reason columns. CSS makes the cells position:sticky; the sticky
+	 * left offsets depend on the rendered column widths, so they are measured
+	 * here from the header row and set inline. Reruns on resize/load.
+	 */
+	function applyFrozenColumns() {
+		var table = document.querySelector('.wicket-importer-flagged-table');
+		if (!table || !table.tHead || !table.tHead.rows.length) {
+			return;
+		}
+		var headCells = table.tHead.rows[0].cells;
+		var count = Math.min(3, headCells.length);
+		var offsets = [];
+		var left = 0;
+		for (var i = 0; i < count; i++) {
+			offsets.push(left);
+			left += headCells[i].getBoundingClientRect().width;
+		}
+		var sections = [table.tHead].concat(Array.prototype.slice.call(table.tBodies));
+		for (var s = 0; s < sections.length; s++) {
+			var rows = sections[s].rows;
+			for (var r = 0; r < rows.length; r++) {
+				var cells = rows[r].cells;
+				for (var c = 0; c < count && c < cells.length; c++) {
+					cells[c].style.left = Math.round(offsets[c]) + 'px';
+				}
+			}
+		}
+	}
 
 	// ------------------------------------------------------------------
 	// Inline notice helper (shared by all screens)

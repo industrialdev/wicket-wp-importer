@@ -289,6 +289,43 @@
 	box-shadow: inset 4px 0 0 #dba617;
 }
 
+/*
+ * Frozen columns (WWID-2253): Line + the first two data columns (for OBA:
+ * last_name, first_name) stay visible while the admin scrolls right toward
+ * the Status/Reason columns. CSS does the sticking; the sticky left offsets
+ * are measured from the header row by applyFrozenColumns() in admin.js
+ * (column widths are content-driven, so they cannot be hardcoded).
+ * Without JS the table degrades to the current non-frozen behavior.
+ */
+.wicket-importer-flagged-table th:nth-child(-n+3),
+.wicket-importer-flagged-table td:nth-child(-n+3) {
+	position: sticky;
+	z-index: 1;
+}
+
+/* Sticky cells need an opaque background or the scrolled rows show through. */
+.wicket-importer-flagged-table tbody th:nth-child(-n+3),
+.wicket-importer-flagged-table tbody td:nth-child(-n+3) {
+	background: #fff;
+}
+
+/* Keep the striped look on frozen cells; flagged cells keep their highlight. */
+.wicket-importer-flagged-table tbody tr:nth-child(odd) > th:nth-child(-n+3):not(.wicket-importer-cell-flagged),
+.wicket-importer-flagged-table tbody tr:nth-child(odd) > td:nth-child(-n+3):not(.wicket-importer-cell-flagged) {
+	background: #f6f7f7;
+}
+
+/* Divider edge on the last frozen column. A flagged cell in column 3 keeps
+   its marker bar; both shadows combine. */
+.wicket-importer-flagged-table th:nth-child(3),
+.wicket-importer-flagged-table td:nth-child(3) {
+	box-shadow: inset -1px 0 0 #c3c4c7;
+}
+
+.wicket-importer-flagged-table td:nth-child(3).wicket-importer-cell-flagged {
+	box-shadow: inset 4px 0 0 #dba617, inset -1px 0 0 #c3c4c7;
+}
+
 /* ---- Status badges (Task 9.2) ------------------------------------- */
 
 .wicket-importer-badge {
