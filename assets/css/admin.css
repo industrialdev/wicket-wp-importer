@@ -472,6 +472,11 @@
 	margin-bottom: 16px;
 }
 
+/* History detail: space between the action buttons and the Rows heading. */
+.wicket-importer-batch-actions {
+	margin-bottom: 24px;
+}
+
 .wicket-importer-history-msg {
 	font-size: 12px;
 	color: #646970;
