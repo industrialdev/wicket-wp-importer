@@ -5,6 +5,12 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 <!-- new releases inserted below this line -->
 
+## [1.0.18] - 2026-08-17
+
+### Fixed
+- **admin:** spacing between batch actions and Rows heading on History detail
+
+
 ## [1.0.17] - 2026-08-17
 
 ### Fixed
