@@ -5,6 +5,12 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 <!-- new releases inserted below this line -->
 
+## [1.0.19] - 2026-08-18
+
+### Fixed
+- **import:** require first and last name on bulk import (#2)
+
+
 ## [1.0.18] - 2026-08-17
 
 ### Fixed
