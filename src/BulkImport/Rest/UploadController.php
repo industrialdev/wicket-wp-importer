@@ -844,7 +844,21 @@ final class UploadController
 
             $orderId = $row['order_id'] ?? null;
 
-            $line[] = (string) ($row['import_status'] ?? '');
+            /*
+             * Rows that failed validation are never claimed for import, so
+             * their import_status stays 'pending' forever. Relabel to
+             * 'skipped' — same rule as ImportAdminPage::effectiveImportStatus()
+             * so the CSV matches the admin history screen.
+             */
+            $importStatus = (string) ($row['import_status'] ?? '');
+            if ($importStatus === 'pending') {
+                $eligible = [ValidationResult::STATUS_VALID, ValidationResult::STATUS_WARNING];
+                if (!in_array((string) ($row['validation_status'] ?? ''), $eligible, true)) {
+                    $importStatus = 'skipped';
+                }
+            }
+
+            $line[] = $importStatus;
             $line[] = (string) ($row['import_message'] ?? '');
             $line[] = (string) ($row['mdp_uuid'] ?? '');
             $line[] = ($orderId !== null && $orderId !== '') ? (string) $orderId : '';
