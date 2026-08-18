@@ -48,11 +48,15 @@ final class DefaultColumns
             new ColumnDefinition(
                 key: 'first_name',
                 label: __('First Name', 'wicket-wp-importer'),
+                required: true,
+                validators: [['type' => 'required']],
                 aliases: ['first', 'firstname', 'given name', 'given_name', 'forename'],
             ),
             new ColumnDefinition(
                 key: 'last_name',
                 label: __('Last Name', 'wicket-wp-importer'),
+                required: true,
+                validators: [['type' => 'required']],
                 aliases: ['last', 'lastname', 'family name', 'family_name', 'surname'],
             ),
             new ColumnDefinition(
