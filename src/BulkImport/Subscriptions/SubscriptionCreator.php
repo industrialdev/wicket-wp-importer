@@ -197,6 +197,14 @@ class SubscriptionCreator
             return null;
         }
 
+        // Story 12: subscriptions inherit the run's _batch_id from the parent
+        // order (OrderCreator stamped it), so one write site covers both the
+        // membership and the section subscription and they can never diverge.
+        $batchLabel = method_exists($order, 'get_meta') ? (string) $order->get_meta('_batch_id') : '';
+        if ($batchLabel !== '') {
+            $sub->update_meta_data('_batch_id', $batchLabel);
+        }
+
         // Inherit the billing address so renewals can be charged.
         if (method_exists($order, 'get_address')) {
             $sub->set_address($order->get_address('billing'), 'billing');

@@ -34,7 +34,7 @@ class OrderCreator
      *
      * @return OrderResult created (carries the order ID) or failed.
      */
-    public function create(MemberData $data, ResolvedProducts $resolved): OrderResult
+    public function create(MemberData $data, ResolvedProducts $resolved, ?string $batchLabel = null): OrderResult
     {
         if ($resolved->isError()) {
             return OrderResult::failed('Product resolution failed: ' . (string) $resolved->error);
@@ -64,6 +64,12 @@ class OrderCreator
             $order->set_customer_id($userId);
         }
         $this->applyPaymentMethod($order);
+
+        // Story 12: the run's human-readable batch label on every order so
+        // bulk and manual (Story 13) orders group under the same _batch_id key.
+        if ($batchLabel !== null && $batchLabel !== '') {
+            $order->update_meta_data('_batch_id', $batchLabel);
+        }
 
         // Line items: membership renewal + sections + late fees. Returns the
         // count added so a fully-empty set (every product missing) fails closed

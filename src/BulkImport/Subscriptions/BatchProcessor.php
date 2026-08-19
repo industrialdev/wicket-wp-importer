@@ -73,9 +73,12 @@ final class BatchProcessor
         // created_at auto-defaults to CURRENT_TIMESTAMP; the History tab's
         // "Started" column reads it, so no explicit run-start column is needed.
         // phase1_started_at records when the AS chain actually began (same
-        // moment as the insert on this path).
+        // moment as the insert on this path). batch_label is the human-readable
+        // reporting key (spec Story 12: YYYYMMDD-HHMM, site timezone) written to
+        // _batch_id meta on every order + subscription; generated once here so
+        // every chunk re-reads the SAME label from the row.
         $wpdb->query($wpdb->prepare(
-            "INSERT INTO {$wpdb->prefix}" . self::TABLE . ' (batch_id, session_id, status, csv_filename, created_by_user_id, csv_row_count, phase1_total, phase1_started_at) VALUES (%s, %s, %s, %s, %d, %d, %d, %s)',
+            "INSERT INTO {$wpdb->prefix}" . self::TABLE . ' (batch_id, session_id, status, csv_filename, created_by_user_id, csv_row_count, phase1_total, phase1_started_at, batch_label) VALUES (%s, %s, %s, %s, %d, %d, %d, %s, %s)',
             $batchId,
             $sessionId,
             'running',
@@ -83,7 +86,8 @@ final class BatchProcessor
             $createdByUserId,
             $totalRows,
             $totalRows,
-            \current_time('mysql', true)
+            \current_time('mysql', true),
+            \current_time('Ymd-Hi')
         ));
 
         $this->logger?->info('Batch run started.', [
@@ -244,6 +248,9 @@ final class BatchProcessor
         $staging = new ImportStagingTable();
         $chunkSize = (int) apply_filters('wicket_import_chunk_size', WICKET_IMPORT_CHUNK_SIZE);
         $claimed = $staging->claimChunk($sessionId, $chunkSize);
+        // Story 12: re-read the run's human-readable label from the batch row
+        // (generated once in startRun) so every chunk stamps the SAME _batch_id.
+        $batchLabel = (string) (($this->getBatchBySession($sessionId) ?: [])['batch_label'] ?? '');
 
         if ($claimed === false) {
             $this->logger?->error('claimChunk reported a DB error; failing the batch closed.', [
@@ -270,6 +277,10 @@ final class BatchProcessor
         foreach ($staging->getProcessingBySession($sessionId) as $row) {
             $stagingId = (int) ($row['id'] ?? 0);
             try {
+                // Story 12: the run's human-readable label rides on the row so
+                // adapters can stamp _batch_id on orders/subscriptions without
+                // widening the generic RowProcessor interface.
+                $row['_batch_label'] = $batchLabel;
                 $result = $this->processRow($row);
                 $staging->updateImportResult($stagingId, $result->status, $result->message);
                 if ($result->orderId !== null) {

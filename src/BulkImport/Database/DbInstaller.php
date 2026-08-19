@@ -72,6 +72,7 @@ class DbInstaller
   created_by_user_id bigint(20) unsigned NOT NULL,
   csv_filename varchar(255) DEFAULT NULL,
   csv_row_count int(11) NOT NULL DEFAULT 0,
+  batch_label varchar(20) DEFAULT NULL,
   mapping_config longtext DEFAULT NULL,
   phase1_total int(11) NOT NULL DEFAULT 0,
   phase1_succeeded int(11) NOT NULL DEFAULT 0,

@@ -143,6 +143,10 @@ final class WicketImporter
         // posts to admin-post.php. The handler is a stub until Phase 2 ships.
         add_action('admin_post_wicket_import_cheque_proceed', [Admin\ChequeReviewPage::class, 'handleProceed']);
 
+        // Story 13: optional, pattern-validated Batch ID field on the WC Edit
+        // Order screen (HPOS-safe hook; gated on WooCommerce at render time).
+        (new Admin\OrderBatchIdMetabox())->register();
+
         // TODO Phase 4 (cheque adapter): OrderCreator (On Hold order, cheque
         // payment, customer by Bar ID), the per-row processRow wiring that turns
         // BatchProcessor's placeholder into the resolver -> OrderCreator ->

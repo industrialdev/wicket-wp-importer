@@ -72,7 +72,7 @@ final class ChequeRowProcessor implements RowProcessor
             stagingId: $stagingId,
         );
 
-        $order = $this->orderCreator->create($memberData, $resolved);
+        $order = $this->orderCreator->create($memberData, $resolved, $this->batchLabel($row));
         if ($order->isFailed()) {
             // No order was created: a plain failure, nothing to reconcile.
             return RowResult::failed($order->message ?? 'Order creation failed.');
@@ -95,6 +95,19 @@ final class ChequeRowProcessor implements RowProcessor
         }
 
         return RowResult::imported($orderId);
+    }
+
+    /**
+     * The run's human-readable batch label injected by BatchProcessor on the
+     * staged row (Story 12). Empty when absent (e.g. direct/test calls).
+     *
+     * @param array<string,mixed> $row
+     */
+    private function batchLabel(array $row): ?string
+    {
+        $label = (string) ($row['_batch_label'] ?? '');
+
+        return $label !== '' ? $label : null;
     }
 
     /**
