@@ -631,9 +631,15 @@ final class UploadController
         $sessionId = (string) ($request['id'] ?? '');
         $rows = Plugin::get_instance()->StagingTable()->getByImportStatus($sessionId, ['failed', 'needs_review', 'email_conflict', 'skipped_active_membership']);
 
+        // Cheque sessions export with the cheque column contract so headers
+        // match the uploaded file (member defaults would show member columns).
+        $columns = $request->get_param('context') === 'cheque'
+            ? $this->resolveChequeColumns()
+            : $this->resolveColumns();
+
         (new CsvExporter())->download(
             sprintf('import-errors-%s.csv', $sessionId),
-            $this->buildErrorCsv($rows)
+            $this->buildErrorCsv($rows, $columns)
         );
     }
 
@@ -913,9 +919,9 @@ final class UploadController
      * @param list<array<string,mixed>> $rows Staged rows.
      * @return list<list<string>>
      */
-    private function buildErrorCsv(array $rows): array
+    private function buildErrorCsv(array $rows, ?array $columns = null): array
     {
-        $dataKeys = ColumnOrder::forRows($rows);
+        $dataKeys = ColumnOrder::forRows($rows, $columns);
         $headers = array_merge(['Line'], $dataKeys, ['Status', 'Reason', 'Order ID', 'Suggested Fix']);
 
         $out = [];

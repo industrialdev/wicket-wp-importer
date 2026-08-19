@@ -187,7 +187,7 @@ final class ChequeReviewPage
 
     private function renderExportLink(string $sessionId): void
     {
-        $url = rest_url('/wicket/v1/import/session/' . $sessionId . '/error-csv');
+        $url = rest_url('/wicket/v1/import/session/' . $sessionId . '/error-csv?context=cheque');
         // Anchors cannot send the X-WP-Nonce header; bake it into the URL.
         $nonceUrl = wp_nonce_url($url, 'wp_rest', '_wpnonce');
 

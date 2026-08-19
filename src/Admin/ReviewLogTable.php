@@ -72,7 +72,7 @@ final class ReviewLogTable extends \WP_List_Table
      *
      * @param array<string,mixed> $item
      */
-    public function column_default($item, string $column_name): string
+    public function column_default($item, $column_name)
     {
         $value = $item[$column_name] ?? '';
 

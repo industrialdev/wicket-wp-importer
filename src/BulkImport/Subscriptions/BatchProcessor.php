@@ -214,7 +214,7 @@ final class BatchProcessor
     public function startBatch(string $sessionId, string $csvFilename, int $createdByUserId, int $totalRows): string
     {
         $batchId = $this->startRun($sessionId, $csvFilename, $createdByUserId, $totalRows);
-        $this->scheduleNextChunk($batchId, $sessionId);
+        $this->scheduleNextChunk($batchId, $sessionId, 1);
 
         return $batchId;
     }
