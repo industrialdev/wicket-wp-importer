@@ -5,6 +5,12 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 <!-- new releases inserted below this line -->
 
+## [1.0.24] - 2026-08-19
+
+### Other
+- fix+feat(importer): Story 1 sync seam + Story 6 user-role-keyed mappings
+
+
 ## [1.0.23] - 2026-08-19
 
 ### Added
