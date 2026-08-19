@@ -4,7 +4,7 @@
  * Plugin Name:       Wicket Importer
  * Plugin URI:        https://wicket.io
  * Description:       Wicket Importer plugin for bulk membership import and payment processing.
- * Version:           1.0.22
+ * Version:           1.0.23
  * Author:            Wicket Inc.
  * Text Domain:       wicket-wp-importer
  * Domain Path:       /languages

@@ -5,6 +5,16 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 <!-- new releases inserted below this line -->
 
+## [1.0.23] - 2026-08-19
+
+### Added
+- **importer:** batch IDs on orders and subscriptions (Slice 4.5, Stories 12-13)
+
+### Fixed
+- **importer:** renewal meta on all membership-linked order and subscription items
+- **importer:** live-test fixes for the cheque flow end-to-end run
+
+
 ## [1.0.22] - 2026-08-19
 
 ### Added
