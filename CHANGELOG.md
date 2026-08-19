@@ -5,6 +5,12 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 <!-- new releases inserted below this line -->
 
+## [1.0.25] - 2026-08-19
+
+### Fixed
+- **importer:** peer-review fixes (SKU discount + sync ordering + tierPostId)
+
+
 ## [1.0.24] - 2026-08-19
 
 ### Other
