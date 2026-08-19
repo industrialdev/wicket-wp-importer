@@ -5,6 +5,12 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 <!-- new releases inserted below this line -->
 
+## [1.0.21] - 2026-08-19
+
+### Fixed
+- **admin:** flagged-rows table covered the first data row with its sticky header
+
+
 ## [1.0.20] - 2026-08-18
 
 ### Fixed
