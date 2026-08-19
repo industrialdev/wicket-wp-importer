@@ -5,6 +5,12 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 <!-- new releases inserted below this line -->
 
+## [1.0.26] - 2026-08-19
+
+### Added
+- **importer:** Phase 2 payment matching engine + REST (Slice 5, gated off by default)
+
+
 ## [1.0.25] - 2026-08-19
 
 ### Fixed
