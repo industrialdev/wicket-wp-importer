@@ -236,11 +236,14 @@ class SubscriptionCreator
         if ($membershipPostId === 0 || !method_exists($subscription, 'get_items')) {
             return;
         }
-        $items = $subscription->get_items();
-        $first = $items !== [] ? array_values($items)[0] : null;
-        if ($first !== null && method_exists($first, 'update_meta_data')) {
-            $first->update_meta_data('_membership_post_id_renew', $membershipPostId);
-            $first->save();
+        // Story 8: EVERY line item connected to a membership carries the
+        // renewal meta (the section subscription holds one item per section;
+        // the membership subscription its single product), not just the first.
+        foreach ($subscription->get_items() as $item) {
+            if (method_exists($item, 'update_meta_data')) {
+                $item->update_meta_data('_membership_post_id_renew', $membershipPostId);
+                $item->save();
+            }
         }
     }
 

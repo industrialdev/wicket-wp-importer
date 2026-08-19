@@ -72,7 +72,7 @@ final class ChequeRowProcessor implements RowProcessor
             stagingId: $stagingId,
         );
 
-        $order = $this->orderCreator->create($memberData, $resolved, $this->batchLabel($row));
+        $order = $this->orderCreator->create($memberData, $resolved, $this->batchLabel($row), $membershipPostId);
         if ($order->isFailed()) {
             // No order was created: a plain failure, nothing to reconcile.
             return RowResult::failed($order->message ?? 'Order creation failed.');

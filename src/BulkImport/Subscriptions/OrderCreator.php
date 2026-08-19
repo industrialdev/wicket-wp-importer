@@ -34,7 +34,7 @@ class OrderCreator
      *
      * @return OrderResult created (carries the order ID) or failed.
      */
-    public function create(MemberData $data, ResolvedProducts $resolved, ?string $batchLabel = null): OrderResult
+    public function create(MemberData $data, ResolvedProducts $resolved, ?string $batchLabel = null, int $membershipPostId = 0): OrderResult
     {
         if ($resolved->isError()) {
             return OrderResult::failed('Product resolution failed: ' . (string) $resolved->error);
@@ -78,6 +78,13 @@ class OrderCreator
             return OrderResult::failed('No products could be added to the order.');
         }
 
+        // Story 5: stamp _membership_post_id_renew on every membership-linked
+        // ORDER line item (membership + sections; NOT late fees) so the
+        // Memberships plugin recognizes each as a renewal downstream.
+        if ($membershipPostId > 0) {
+            $this->stampRenewalMetaOnOrderItems($order, $resolved, $membershipPostId);
+        }
+
         $order->calculate_totals();
         // Set status last so status-transition hooks fire on a complete order.
         $order->set_status('on-hold');
@@ -115,6 +122,36 @@ class OrderCreator
         }
 
         return $added;
+    }
+
+    /**
+     * Stamp _membership_post_id_renew on the order's membership-linked line
+     * items (membership product + section products; late-fee items are not
+     * memberships and stay unstamped). Matching is by product ID, qty 1 each.
+     */
+    private function stampRenewalMetaOnOrderItems(object $order, ResolvedProducts $resolved, int $membershipPostId): void
+    {
+        if (!method_exists($order, 'get_items')) {
+            return;
+        }
+
+        $stampable = array_values(array_filter(array_merge(
+            $resolved->membershipProductId > 0 ? [$resolved->membershipProductId] : [],
+            $resolved->sectionProductIds,
+        ), static fn ($id): bool => $id > 0));
+        if ($stampable === []) {
+            return;
+        }
+
+        foreach ($order->get_items() as $item) {
+            if (!method_exists($item, 'get_product_id') || !method_exists($item, 'update_meta_data')) {
+                continue;
+            }
+            if (in_array((int) $item->get_product_id(), $stampable, true)) {
+                $item->update_meta_data('_membership_post_id_renew', $membershipPostId);
+                $item->save();
+            }
+        }
     }
 
     /**
