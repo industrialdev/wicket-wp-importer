@@ -60,7 +60,9 @@ final class SectionResolver
                 $this->logger?->warning('No section mapping for slug; skipping.', ['slug' => $slug]);
                 continue;
             }
-            $productId = $entry->productId;
+            // SKU-canonical (D-LOCKBOX-1): entries may carry only a SKU; resolve
+            // to the product ID at call time like every other mapping consumer.
+            $productId = $entry->resolveProductId();
             if ($productId === null || $productId === 0 || isset($seen[$productId])) {
                 continue;
             }

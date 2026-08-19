@@ -43,11 +43,29 @@ final class ChequeRowProcessor implements RowProcessor
         $data = $this->decode($row['raw_data'] ?? null);
         $stagingId = (int) ($row['id'] ?? 0);
 
+        // Build the row's MemberData once so every client seam the engine
+        // exposes (order_customer, membership_post, section_slugs, the
+        // sync_member_roles action) sees a consistent shape. tierPostId is
+        // resolved by the membership_post seam and not known up front.
+        $memberData = new MemberData(
+            personUuid: (string) ($row['mdp_uuid'] ?? ''),
+            person: [],
+            row: $data,
+            tierPostId: 0,
+            stagingId: $stagingId,
+        );
+
         // Client-sourced inputs (OBA answers these from its Bar ID; defaults are
         // inert so core never references a client identifier).
         $csvTotal = (float) ($data['order_total'] ?? 0);
-        $membershipPostId = (int) apply_filters('wicket_import_resolve_membership_post', 0, $data);
-        $sectionSlugs = (array) apply_filters('wicket_import_resolve_section_slugs', [], $data);
+        $membershipPostId = (int) apply_filters('wicket_import_resolve_membership_post', 0, $memberData);
+        $sectionSlugs = (array) apply_filters('wicket_import_resolve_section_slugs', [], $memberData);
+
+        // Story 1: fresh MDP roles BEFORE resolution — the tier/discount/late-fee
+        // mappings key on the member's WP user roles, so a client sync hook runs
+        // here (per-row, single correctness point). The importer fires the seam;
+        // the client owns WHAT syncs (D-LOCKBOX-3 mechanism/policy).
+        do_action('wicket_import_sync_member_roles', $membershipPostId, $memberData);
 
         $resolved = $this->productResolver->resolve($membershipPostId, $sectionSlugs, $csvTotal);
         if ($resolved->isError()) {
@@ -63,14 +81,6 @@ final class ChequeRowProcessor implements RowProcessor
                 $resolved->expectedTotal
             ));
         }
-
-        $memberData = new MemberData(
-            personUuid: (string) ($row['mdp_uuid'] ?? ''),
-            person: [],
-            row: $data,
-            tierPostId: 0,
-            stagingId: $stagingId,
-        );
 
         $order = $this->orderCreator->create($memberData, $resolved, $this->batchLabel($row), $membershipPostId);
         if ($order->isFailed()) {

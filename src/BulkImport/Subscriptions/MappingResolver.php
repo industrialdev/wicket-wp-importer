@@ -72,12 +72,12 @@ final class MappingResolver
             return;
         }
 
-        $role = self::memberRole($membershipPostId);
-        if ($role === '') {
+        $roles = self::memberRoles($membershipPostId);
+        if ($roles === []) {
             return;
         }
 
-        $matched = $this->mappingsForRole($role);
+        $matched = $this->mappingsForRoles($roles);
         if ($matched['late_fees'] === [] && $matched['discounts'] === []) {
             return;
         }
@@ -114,28 +114,46 @@ final class MappingResolver
     /**
      * Load active late-fee + discount mappings that match a role.
      *
-     * Centralized so the matching rule is one seam (role equality on the tier
-     * slug today; widen here if a client needs partial / multi-role matching).
-     *
      * @return array{late_fees: list<MappingEntry>, discounts: list<MappingEntry>}
      */
     public function mappingsForRole(string $role): array
     {
-        if (isset($this->mappingsForRoleCache[$role])) {
-            return $this->mappingsForRoleCache[$role];
+        return $this->mappingsForRoles([$role]);
+    }
+
+    /**
+     * Load active late-fee + discount mappings that match ANY of the member's
+     * roles (spec Story 6: WP user roles synced from MDP; a member may hold
+     * several, and each matching mapping applies — overlapping late-fee roles
+     * each add their fee line).
+     *
+     * @param list<string> $roles
+     *
+     * @return array{late_fees: list<MappingEntry>, discounts: list<MappingEntry>}
+     */
+    public function mappingsForRoles(array $roles): array
+    {
+        $key = implode('|', $roles);
+        if (isset($this->mappingsForRoleCache[$key])) {
+            return $this->mappingsForRoleCache[$key];
+        }
+
+        $want = array_fill_keys(array_values(array_filter($roles, 'is_string')), true);
+        if ($want === []) {
+            return $this->mappingsForRoleCache[$key] = ['late_fees' => [], 'discounts' => []];
         }
 
         $repo = $this->mappingRepository();
         $lateFees = array_values(array_filter(
             $repo->getActiveMappings('late_fee'),
-            static fn (MappingEntry $m): bool => $m->roleSlug === $role
+            static fn (MappingEntry $m): bool => isset($want[$m->roleSlug])
         ));
         $discounts = array_values(array_filter(
             $repo->getActiveMappings('discount'),
-            static fn (MappingEntry $m): bool => $m->roleSlug === $role
+            static fn (MappingEntry $m): bool => isset($want[$m->roleSlug])
         ));
 
-        return $this->mappingsForRoleCache[$role] = ['late_fees' => $lateFees, 'discounts' => $discounts];
+        return $this->mappingsForRoleCache[$key] = ['late_fees' => $lateFees, 'discounts' => $discounts];
     }
 
     /**
@@ -183,19 +201,32 @@ final class MappingResolver
     }
 
     /**
-     * The member's mapping role: the wicket_mship_tier post slug (post_name).
-     * Shared by MappingResolver + ProductResolver (S5) so the role resolution
+     * The member's mapping roles: the WP USER role slugs of the user linked to
+     * the wicket_membership post (user_id meta). Spec Stories 1/6: roles are
+     * synced from the MDP per member and key the late-fee/discount mappings.
+     * Shared by MappingResolver + ProductResolver (S5) so role resolution
      * lives in one place and cannot drift between the two.
+     *
+     * @return list<string>
      */
-    public static function memberRole(int $membershipPostId): string
+    public static function memberRoles(int $membershipPostId): array
     {
-        $tierPostId = (int) get_post_meta($membershipPostId, 'membership_tier_post_id', true);
-        if ($tierPostId === 0) {
-            return '';
+        $userId = (int) get_post_meta($membershipPostId, 'user_id', true);
+        if ($userId === 0) {
+            return [];
         }
-        $tier = get_post($tierPostId);
 
-        return $tier ? (string) $tier->post_name : '';
+        $user = get_userdata($userId);
+        if ($user === false) {
+            return [];
+        }
+
+        // Steady-state WP roles carry no mapping signal (nothing maps them);
+        // keep them anyway — the mapping equality filter decides, not this.
+        return array_values(array_filter(
+            array_map(static fn ($r): string => (string) $r, $user->roles),
+            static fn (string $r): bool => $r !== ''
+        ));
     }
 
     private function mappingRepository(): MappingRepository

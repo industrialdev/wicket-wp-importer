@@ -114,17 +114,18 @@ class ProductResolver
     }
 
     /**
-     * Late-fee product IDs applicable to the member's role (via the shared
-     * MappingResolver::memberRole resolver).
+     * Late-fee product IDs applicable to the member's WP user roles (via the
+     * shared MappingResolver::memberRoles resolver; one fee line per matching
+     * mapping, overlapping roles stack — spec Story 6).
      */
     private function lateFeeProductIds(int $membershipPostId): array
     {
-        $role = MappingResolver::memberRole($membershipPostId);
-        if ($role === '') {
+        $roles = MappingResolver::memberRoles($membershipPostId);
+        if ($roles === []) {
             return [];
         }
 
-        $entries = $this->mappingResolver()->mappingsForRole($role)['late_fees'] ?? [];
+        $entries = $this->mappingResolver()->mappingsForRoles($roles)['late_fees'] ?? [];
         $ids = array_map(static fn ($e): int => (int) ($e->resolveProductId() ?? 0), $entries);
 
         return array_values(array_filter($ids, static fn (int $id): bool => $id > 0));
@@ -152,12 +153,12 @@ class ProductResolver
      */
     private function discountProductIds(int $membershipPostId): array
     {
-        $role = MappingResolver::memberRole($membershipPostId);
-        if ($role === '') {
+        $roles = MappingResolver::memberRoles($membershipPostId);
+        if ($roles === []) {
             return [];
         }
 
-        $entries = $this->mappingResolver()->mappingsForRole($role)['discounts'] ?? [];
+        $entries = $this->mappingResolver()->mappingsForRoles($roles)['discounts'] ?? [];
         $ids = [];
         foreach ($entries as $entry) {
             if (($entry->applicationType ?? '') === 'product' && !empty($entry->productId)) {
