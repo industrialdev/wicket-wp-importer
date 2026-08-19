@@ -54,6 +54,13 @@ final class BatchProcessor
     ) {}
 
     /**
+     * Extra chunks allowed beyond the expected chunk count before the
+     * self-perpetuating chain is aborted (22.3). Guards against a runaway
+     * loop where rows never reach a terminal status.
+     */
+    private const RESCHEDULE_HEADROOM = 5;
+
+    /**
      * Insert a `wicket_import_batches` row for the run start. Returns the new
      * batch_id (a UUID) so the caller can pass it to finishRun.
      */
@@ -65,15 +72,18 @@ final class BatchProcessor
 
         // created_at auto-defaults to CURRENT_TIMESTAMP; the History tab's
         // "Started" column reads it, so no explicit run-start column is needed.
+        // phase1_started_at records when the AS chain actually began (same
+        // moment as the insert on this path).
         $wpdb->query($wpdb->prepare(
-            "INSERT INTO {$wpdb->prefix}" . self::TABLE . ' (batch_id, session_id, status, csv_filename, created_by_user_id, csv_row_count, phase1_total) VALUES (%s, %s, %s, %s, %d, %d, %d)',
+            "INSERT INTO {$wpdb->prefix}" . self::TABLE . ' (batch_id, session_id, status, csv_filename, created_by_user_id, csv_row_count, phase1_total, phase1_started_at) VALUES (%s, %s, %s, %s, %d, %d, %d, %s)',
             $batchId,
             $sessionId,
             'running',
             $csvFilename,
             $createdByUserId,
             $totalRows,
-            $totalRows
+            $totalRows,
+            \current_time('mysql', true)
         ));
 
         $this->logger?->info('Batch run started.', [
@@ -92,7 +102,7 @@ final class BatchProcessor
      *                          phase2_total, phase2_succeeded, phase2_failed, phase2_needs_review.
      *                          Unknown keys are ignored.
      */
-    public function finishRun(string $batchId, string $status, array $stats): void
+    public function finishRun(string $batchId, string $status, array $stats, array $extraColumns = []): void
     {
         global $wpdb;
 
@@ -107,6 +117,10 @@ final class BatchProcessor
                 $data[$k] = (int) $stats[$k];
                 $formats[] = '%d';
             }
+        }
+        foreach ($extraColumns as $column => $value) {
+            $data[$column] = $value;
+            $formats[] = is_int($value) ? '%d' : '%s';
         }
 
         $wpdb->update(
@@ -213,8 +227,20 @@ final class BatchProcessor
      * When claimChunk returns 0 the batch has no importable rows left and is
      * finished; a false return (DB error) fails the batch closed.
      */
-    public function processChunk(string $batchId, string $sessionId): void
+    public function processChunk(string $batchId, string $sessionId, int $attempt = 1): void
     {
+        // Reschedule cap (22.3): the chain must terminate within the expected
+        // chunk count plus a small headroom. Past it, rows are not reaching a
+        // terminal status; abort instead of looping forever.
+        if ($attempt > $this->maxChunks($sessionId)) {
+            $this->logger?->error('Reschedule cap exceeded; aborting the batch.', [
+                'batch_id' => $batchId, 'session_id' => $sessionId, 'attempt' => $attempt,
+            ]);
+            $this->finishRun($batchId, 'failed', []);
+
+            return;
+        }
+
         $staging = new ImportStagingTable();
         $chunkSize = (int) apply_filters('wicket_import_chunk_size', WICKET_IMPORT_CHUNK_SIZE);
         $claimed = $staging->claimChunk($sessionId, $chunkSize);
@@ -233,7 +259,10 @@ final class BatchProcessor
             // pending_review so the Review UI arms the Phase 2 gate. The inline
             // member path keeps 'completed' (finishRunBySession); this is the
             // cheque/AS path only.
-            $this->finishRun($batchId, 'pending_review', $this->tally($sessionId, $staging));
+            $this->finishRun($batchId, 'pending_review', $this->tally($sessionId, $staging), [
+                'phase1_completed_at' => \current_time('mysql', true),
+                'conflicting_roles' => $this->conflictingRolesJson($sessionId, $staging),
+            ]);
 
             return;
         }
@@ -255,7 +284,7 @@ final class BatchProcessor
             }
         }
 
-        $this->scheduleNextChunk($batchId, $sessionId);
+        $this->scheduleNextChunk($batchId, $sessionId, $attempt);
     }
 
     /**
@@ -281,13 +310,47 @@ final class BatchProcessor
      * the engine is callable without a live scheduler; tests drive the chain
      * synchronously by calling processChunk directly.
      */
-    private function scheduleNextChunk(string $batchId, string $sessionId): void
+    private function scheduleNextChunk(string $batchId, string $sessionId, int $attempt): void
     {
         if (!function_exists('as_schedule_single_action')) {
             return;
         }
 
-        \as_schedule_single_action(time(), self::CHUNK_HOOK, [$batchId, $sessionId]);
+        \as_schedule_single_action(time(), self::CHUNK_HOOK, [$batchId, $sessionId, $attempt + 1]);
+    }
+
+    /**
+     * The maximum chunk actions a run may consume (22.3):
+     * ceil(phase1_total / chunk size) + headroom.
+     */
+    private function maxChunks(string $sessionId): int
+    {
+        $batch = $this->getBatchBySession($sessionId);
+        $total = (int) ($batch['phase1_total'] ?? 0);
+        $chunkSize = (int) apply_filters('wicket_import_chunk_size', WICKET_IMPORT_CHUNK_SIZE);
+
+        return (int) ceil($total / max(1, $chunkSize)) + self::RESCHEDULE_HEADROOM;
+    }
+
+    /**
+     * The conflicting_roles JSON (22.4): the rows a human must reconcile
+     * before Phase 2, as [{row_index, reason}] for the session's needs_review
+     * rows (e.g. order created but subscription failed, D3 collision skips).
+     * Null when none, so the column stays clean.
+     */
+    private function conflictingRolesJson(string $sessionId, ImportStagingTable $staging): ?string
+    {
+        $rows = $staging->getByImportStatus($sessionId, ['needs_review']);
+        if ($rows === []) {
+            return null;
+        }
+
+        $conflicts = array_values(array_map(static fn (array $row): array => [
+            'row_index' => (int) ($row['row_index'] ?? 0),
+            'reason' => (string) ($row['import_message'] ?? ''),
+        ], $rows));
+
+        return wp_json_encode($conflicts) ?: null;
     }
 
     /**

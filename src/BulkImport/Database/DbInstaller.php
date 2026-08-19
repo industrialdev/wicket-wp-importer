@@ -48,6 +48,7 @@ class DbInstaller
   flagged_fields text DEFAULT NULL,
   mdp_uuid varchar(36) DEFAULT NULL,
   import_status varchar(40) NOT NULL DEFAULT 'pending',
+  processing_claimed_at datetime DEFAULT NULL,
   import_message text DEFAULT NULL,
   extension_metadata longtext DEFAULT NULL,
   order_id bigint(20) unsigned DEFAULT NULL,

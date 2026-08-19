@@ -137,7 +137,7 @@ final class WicketImporter
         // Phase 4 BatchProcessor: the Action Scheduler chunk engine. Its hook is
         // registered so AS can fire chunks; the per-row work (resolver chain ->
         // OrderCreator -> SubscriptionCreator) lands in Slice 2.
-        add_action($batchProcessor::CHUNK_HOOK, [$batchProcessor, 'processChunk'], 10, 2);
+        add_action($batchProcessor::CHUNK_HOOK, [$batchProcessor, 'processChunk'], 10, 3);
 
         // WWID-2026: the cheque Phase 1 review's "Proceed to Phase 2" form
         // posts to admin-post.php. The handler is a stub until Phase 2 ships.

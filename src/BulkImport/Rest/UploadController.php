@@ -26,6 +26,7 @@ use WP_REST_Response;
  * All routes live under the wicket/v1 namespace and require manage_options.
  *
  *   POST   /import/upload                      Parse, validate, stage a CSV.
+ *   POST   /import/cheque/upload             Parse, validate, stage a cheque CSV (cheque column contract).
  *   GET    /import/template                    Download CSV template (Task 8.3).
  *   GET    /import/session/{id}                Validation summary counts.
  *   GET    /import/session/{id}/flagged        Flagged rows with reasons.
@@ -95,6 +96,12 @@ final class UploadController
             'permission_callback' => $permission,
         ]);
 
+        register_rest_route($namespace, '/import/cheque/upload', [
+            'methods'             => 'POST',
+            'callback'            => [$this, 'handleChequeUpload'],
+            'permission_callback' => $permission,
+        ]);
+
         register_rest_route($namespace, '/import/cheque/session/' . self::SESSION_ID_PATTERN . '/run', [
             'methods'             => 'POST',
             'callback'            => [$this, 'handleChequeRun'],
@@ -154,6 +161,36 @@ final class UploadController
      */
     public function handleUpload(WP_REST_Request $request)
     {
+        return $this->ingestUpload($request, $this->resolveColumns(), capAtInlineMax: true);
+    }
+
+    /**
+     * POST /import/cheque/upload — parse, validate, and stage a cheque CSV.
+     *
+     * Same pipeline as the member upload (parse -> validate -> stage -> retain
+     * the source CSV), but shaped by the cheque column contract
+     * (wicket_import_cheque_columns; core defaults order_total + check_id, the
+     * client adds its member identifier, e.g. OBA's bar_id). No inline row cap:
+     * the cheque flow processes on Action Scheduler (built for scale), so the
+     * inline 200-row ceiling does not apply.
+     *
+     * @return WP_REST_Response|WP_Error
+     */
+    public function handleChequeUpload(WP_REST_Request $request)
+    {
+        return $this->ingestUpload($request, $this->resolveChequeColumns(), capAtInlineMax: false);
+    }
+
+    /**
+     * The shared upload staging pipeline (member + cheque uploads): active-session
+     * gate, file checks, parse, validate, stage, batches row, CSV retention.
+     *
+     * @param list<ColumnDefinition> $columns
+     *
+     * @return WP_REST_Response|WP_Error
+     */
+    private function ingestUpload(WP_REST_Request $request, array $columns, bool $capAtInlineMax)
+    {
         // Concurrency gate (plan DB-schema): the active-session check fires before
         // each upload so two uploads can't interleave pending rows. Reject with 409
         // until the prior session is cleared (DELETE /session/{id}) or finishes.
@@ -211,8 +248,6 @@ final class UploadController
         $sessionId = '';
 
         try {
-            $columns = $this->resolveColumns();
-
             $plugin = Plugin::get_instance();
             $parse = $plugin->FileParser()->parseFile($path, $columns, $request->get_param('delimiter'));
 
@@ -229,7 +264,9 @@ final class UploadController
             // a large CSV stages fully then /run returns 413 forever, and the
             // staged 'pending' rows keep hasActiveSession() true so every later
             // upload is rejected with 409 until someone finds the DELETE endpoint.
-            if (count($parse->rows) > WICKET_IMPORT_INLINE_MAX_ROWS) {
+            // Inline/member path only: the cheque flow runs on Action Scheduler
+            // (built for scale), so it is not capped here.
+            if ($capAtInlineMax && count($parse->rows) > WICKET_IMPORT_INLINE_MAX_ROWS) {
                 return $this->error(
                     'import_too_many_rows',
                     sprintf(

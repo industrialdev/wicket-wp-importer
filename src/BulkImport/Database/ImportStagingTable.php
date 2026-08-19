@@ -248,12 +248,13 @@ class ImportStagingTable
         $affected = $wpdb->query(
             $wpdb->prepare(
                 "UPDATE {$this->table_name}
-                 SET import_status = 'processing'
+                 SET import_status = 'processing', processing_claimed_at = %s
                  WHERE session_id = %s
                    AND validation_status IN ('valid', 'warning')
                    AND import_status = 'pending'
                  ORDER BY row_index ASC
                  LIMIT %d",
+                $this->utcNowMysql(),
                 $session_id,
                 $limit
             )
@@ -504,13 +505,13 @@ class ImportStagingTable
      * returns 409 forever, the TTL cron skips them (it targets 'pending'),
      * and getImportSummary() has no bucket for them.
      *
-     * A legitimate /run completes in seconds-to-minutes; if the hourly cron
-     * still sees 'processing' rows, the run that claimed them is dead. Reclaim
-     * them to 'needs_review' (NOT 'pending') because we cannot tell whether
-     * ImportAdapter::create() already ran for the row — re-running could mint
-     * a duplicate membership. Needs-review forces a human check. No time
-     * comparison is needed (hence no timezone concern): presence of
-     * 'processing' at cron time is itself the signal.
+     * A row stays 'processing' while its chunk is in flight. With per-row
+     * MDP/WC writes (cheque flow), a chunk can legitimately run long, so the
+     * reclaim is threshold-guarded on processing_claimed_at: only rows claimed
+     * more than wicket_import_stale_claim_seconds ago (default 1800) are
+     * reclaimed. Rows claimed without a timestamp (legacy rows, or claims made
+     * before the column existed) keep the old presence-based behavior — they
+     * cannot be dated, so presence at cron time is still the signal.
      *
      * @return int Number of rows reclaimed.
      */
@@ -518,11 +519,16 @@ class ImportStagingTable
     {
         global $wpdb;
 
+        /** @var int $threshold Seconds after which a claim is considered dead. */
+        $threshold = (int) apply_filters('wicket_import_stale_claim_seconds', 1800);
+        $cutoff = gmdate('Y-m-d H:i:s', time() - max(60, $threshold));
+
         $affected = $wpdb->query(
             $wpdb->prepare(
-                "UPDATE {$this->table_name} SET import_status = 'needs_review', import_message = %s, processed_at = %s WHERE import_status = 'processing'",
+                "UPDATE {$this->table_name} SET import_status = 'needs_review', import_message = %s, processed_at = %s WHERE import_status = 'processing' AND (processing_claimed_at IS NULL OR processing_claimed_at < %s)",
                 'Reclaimed after an interrupted run.',
-                $this->utcNowMysql()
+                $this->utcNowMysql(),
+                $cutoff
             )
         );
 
