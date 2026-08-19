@@ -293,10 +293,15 @@
  * Sticky header row (WWID-2253): the header follows the vertical scroll so
  * the admin always knows which column is which. Needs an opaque background
  * or the scrolled rows show through.
+ *
+ * top must be 0: the nearest scroll container is the wrap itself
+ * (overflow-x: auto computes overflow-y to auto too), not the page, so an
+ * admin-bar offset here shifts the header DOWN over the first body row and
+ * hides it (Leah's re-upload bug, 2026-08-18).
  */
 .wicket-importer-flagged-table thead th {
 	position: sticky;
-	top: var(--wp-admin--admin-bar--height, 0px);
+	top: 0;
 	background: #fff;
 	z-index: 1;
 }
