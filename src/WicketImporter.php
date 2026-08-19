@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace WicketImporter;
 
 use WicketImporter\BulkImport\Database\ImportStagingTable;
+use WicketImporter\BulkImport\Database\PaymentStagingTable;
 use WicketImporter\BulkImport\Subscriptions\BundleRenewalSubscriber;
 
 /**
@@ -110,6 +111,7 @@ final class WicketImporter
             'Logger'         => $logger,
             'Mappings'       => new Mapping\MappingRepository(),
             'StagingTable'   => new ImportStagingTable(),
+            'PaymentStaging' => new PaymentStagingTable(),
             'FileParser'     => new BulkImport\FileParserService($logger),
             'Validation'     => new BulkImport\ValidationService($logger),
             'ImportAdapter'  => new BulkImport\ImportAdapter(),
@@ -138,14 +140,23 @@ final class WicketImporter
         // registered so AS can fire chunks; the per-row work (resolver chain ->
         // OrderCreator -> SubscriptionCreator) lands in Slice 2.
         add_action($batchProcessor::CHUNK_HOOK, [$batchProcessor, 'processChunk'], 10, 3);
+        // Slice 5: the Phase 2 (payment matching) AS chunk chain uses a separate
+        // hook so the two pipelines never share a worker slot.
+        add_action($batchProcessor::PHASE2_CHUNK_HOOK, [$batchProcessor, 'processPhase2Chunk'], 10, 3);
 
         // WWID-2026: the cheque Phase 1 review's "Proceed to Phase 2" form
-        // posts to admin-post.php. The handler is a stub until Phase 2 ships.
+        // posts to admin-post.php. The handler arms the Phase 2 chain (Slice 5)
+        // by redirecting to the run-phase2 endpoint with the right batch id.
         add_action('admin_post_wicket_import_cheque_proceed', [Admin\ChequeReviewPage::class, 'handleProceed']);
 
         // Story 13: optional, pattern-validated Batch ID field on the WC Edit
         // Order screen (HPOS-safe hook; gated on WooCommerce at render time).
         (new Admin\OrderBatchIdMetabox())->register();
+
+        // DB-drift notice (DV recreation reminder) for admins who updated the
+        // plugin without deactivating+reactivating it.
+        add_action('admin_notices', [Database\DbInstaller::class, 'maybeRenderDriftNotice']);
+        add_action('admin_init', [Database\DbInstaller::class, 'dismissDriftNotice']);
 
         // TODO Phase 4 (cheque adapter): OrderCreator (On Hold order, cheque
         // payment, customer by Bar ID), the per-row processRow wiring that turns

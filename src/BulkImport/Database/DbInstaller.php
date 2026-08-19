@@ -11,6 +11,12 @@ class DbInstaller
 
     /**
      * Check schema version and run install/migration if needed.
+     *
+     * Surface a visible drift warning when the installed version lags behind
+     * the plugin's WICKET_IMPORT_DB_VERSION so the administrator knows they
+     * should deactivate + reactivate the plugin to recreate the database DV
+     * (dbDelta is forward-only and silently adds columns/tables, so an
+     * administrator who only updates without re-activation never sees a hint).
      */
     public static function checkSchemaVersion(): void
     {
@@ -23,6 +29,62 @@ class DbInstaller
             // before Task 38.3 land the schedule without a manual re-activation
             // (register_activation_hook only fires on activate). Idempotent.
             \WicketImporter\WicketImporter::scheduleSessionExpiry();
+            // Remember the previous version so the admin notice can show
+            // "from -> to" and remind the admin about DV recreation. The
+            // option is updated below; the transient is the dismissable surface.
+            if (is_string($installed_version) && $installed_version !== '' && $installed_version !== WICKET_IMPORT_DB_VERSION) {
+                set_transient('wicket_importer_db_drift', [
+                    'from' => $installed_version,
+                    'to' => WICKET_IMPORT_DB_VERSION,
+                ], 5 * MINUTE_IN_SECONDS);
+            }
+        }
+    }
+
+    /**
+     * Render the dismissable DB drift notice on importer admin pages.
+     * Hooked in WicketImporter::plugin_setup().
+     */
+    public static function maybeRenderDriftNotice(): void
+    {
+        $drift = get_transient('wicket_importer_db_drift');
+        if (!is_array($drift)) {
+            return;
+        }
+
+        // Per-admin dismissal (user meta so each admin sees it once).
+        $userId = get_current_user_id();
+        if ($userId === 0 || get_user_meta($userId, 'wicket_importer_db_drift_dismissed') === '1') {
+            return;
+        }
+
+        $from = (string) ($drift['from'] ?? 'none');
+        $to = (string) ($drift['to'] ?? WICKET_IMPORT_DB_VERSION);
+
+        printf(
+            '<div class="notice notice-warning wicket-importer-db-drift"><p>%s</p><p><a href="%s">%s</a></p></div>',
+            esc_html(sprintf(
+                /* translators: 1: previous db version, 2: current db version. */
+                __('Wicket Importer: the database schema was upgraded from %1$s to %2$s. If you depend on the database schema (DV) being recreated, deactivate and reactivate the plugin in Plugins > Installed Plugins.', 'wicket-wp-importer'),
+                $from,
+                $to
+            )),
+            esc_url(add_query_arg('wicket_importer_dismiss_drift', '1')),
+            esc_html__("I've handled this.", 'wicket-wp-importer')
+        );
+    }
+
+    /**
+     * Dismiss the drift notice for the current admin (per-user).
+     */
+    public static function dismissDriftNotice(): void
+    {
+        $userId = get_current_user_id();
+        if ($userId === 0) {
+            return;
+        }
+        if (isset($_GET['wicket_importer_dismiss_drift']) && $_GET['wicket_importer_dismiss_drift'] === '1') {
+            update_user_meta($userId, 'wicket_importer_db_drift_dismissed', '1');
         }
     }
 
@@ -98,9 +160,37 @@ class DbInstaller
   KEY idx_created_at (created_at)
 ) {$collate};";
 
+        // Phase 2 (Slice 5) payment rows. Separate table so the cheque/Phase 1
+        // staging path stays untouched; keyed by the same session_id + batch_id
+        // for unified review/history surfaces.
+        $payments_table = $wpdb->prefix . 'wicket_import_payment_records';
+        $payments_sql = "CREATE TABLE {$payments_table} (
+  id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+  session_id char(36) NOT NULL,
+  batch_id char(36) DEFAULT NULL,
+  row_index int(11) NOT NULL DEFAULT 0,
+  raw_data longtext DEFAULT NULL,
+  validation_status varchar(40) NOT NULL DEFAULT 'pending',
+  validation_message text DEFAULT NULL,
+  import_status varchar(40) NOT NULL DEFAULT 'pending',
+  import_message text DEFAULT NULL,
+  processing_claimed_at datetime DEFAULT NULL,
+  matched_order_id bigint(20) unsigned DEFAULT NULL,
+  matched_subscription_ids text DEFAULT NULL,
+  created_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  processed_at datetime DEFAULT NULL,
+  PRIMARY KEY  (id),
+  KEY idx_session (session_id),
+  KEY idx_session_status (session_id, import_status),
+  KEY idx_batch (batch_id),
+  KEY idx_batch_status (batch_id, import_status),
+  KEY idx_matched_order (matched_order_id)
+) {$collate};";
+
         require_once ABSPATH . 'wp-admin/includes/upgrade.php';
         dbDelta($staged_sql);
         dbDelta($batches_sql);
+        dbDelta($payments_sql);
     }
 
     /**

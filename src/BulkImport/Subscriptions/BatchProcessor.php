@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace WicketImporter\BulkImport\Subscriptions;
 
 use WicketImporter\BulkImport\Database\ImportStagingTable;
+use WicketImporter\BulkImport\Database\PaymentStagingTable;
+use WicketImporter\BulkImport\Subscriptions\PaymentMatcher;
 use WicketImporter\Services\Logger;
 
 /**
@@ -215,12 +217,125 @@ final class BatchProcessor
      * Kick off a batch run: insert the running batches row, then schedule the
      * first chunk. Returns the batch_id so the caller can track the run.
      */
+    /**
+     * Action Scheduler hook the Phase 2 (Slice 5) chunks fire. Separate from
+     * CHUNK_HOOK so the two chains cannot share the same worker slot.
+     */
+    public const PHASE2_CHUNK_HOOK = 'wicket_import_process_phase2_chunk';
+
     public function startBatch(string $sessionId, string $csvFilename, int $createdByUserId, int $totalRows): string
     {
         $batchId = $this->startRun($sessionId, $csvFilename, $createdByUserId, $totalRows);
         $this->scheduleNextChunk($batchId, $sessionId, 1);
 
         return $batchId;
+    }
+
+    /**
+     * Start a Phase 2 run on the most recent batch for $sessionId (which was
+     * left in pending_review by the Phase 1 chain). Transitions it to
+     * phase2_running, writes phase2_started_at, schedules the first Phase 2
+     * chunk, and returns the batch_id.
+     *
+     * @return string|null The batch_id on success, null when no pending_review
+     *                     batch exists for the session.
+     */
+    public function startPhase2(string $sessionId, int $createdByUserId): ?string
+    {
+        global $wpdb;
+
+        $batch = $this->getBatchBySession($sessionId);
+        if ($batch === null || (string) ($batch['status'] ?? '') !== 'pending_review') {
+            return null;
+        }
+
+        $batchId = (string) ($batch['batch_id'] ?? '');
+        if ($batchId === '') {
+            return null;
+        }
+
+        $total = (int) ($wpdb->get_var(
+            $wpdb->prepare(
+                "SELECT COUNT(*) FROM {$wpdb->prefix}wicket_import_payment_records WHERE session_id = %s AND validation_status IN ('valid','warning')",
+                $sessionId
+            )
+        ));
+
+        $wpdb->update(
+            $wpdb->prefix . self::TABLE,
+            [
+                'status' => 'phase2_running',
+                'phase2_total' => $total,
+                'phase2_started_at' => \current_time('mysql', true),
+            ],
+            ['batch_id' => $batchId],
+            ['%s', '%d', '%s'],
+            ['%s']
+        );
+
+        $this->scheduleNextPhase2Chunk($batchId, $sessionId, 1);
+
+        return $batchId;
+    }
+
+    /**
+     * Reset Phase 2 failed/needs_review rows for a session and re-schedule the
+     * next chunk. Used by POST /import/batch/{id}/retry.
+     */
+    public function retryPhase2(string $sessionId, int $createdByUserId): ?string
+    {
+        global $wpdb;
+
+        $batch = $this->getBatchBySession($sessionId);
+        if ($batch === null || (string) ($batch['status'] ?? '') !== 'processing_complete') {
+            return null;
+        }
+
+        $batchId = (string) ($batch['batch_id'] ?? '');
+        if ($batchId === '') {
+            return null;
+        }
+
+        (new PaymentStagingTable())->resetFailedForRetry($sessionId);
+
+        $wpdb->update(
+            $wpdb->prefix . self::TABLE,
+            [
+                'status' => 'phase2_running',
+                'phase2_started_at' => \current_time('mysql', true),
+                'finished_at' => null,
+            ],
+            ['batch_id' => $batchId],
+            ['%s', '%s', '%s'],
+            ['%s']
+        );
+
+        $this->scheduleNextPhase2Chunk($batchId, $sessionId, 1);
+
+        return $batchId;
+    }
+
+    /**
+     * Aggregate progress for a Phase 2 batch (status + tally by import_status).
+     *
+     * @return array{batch_id: string, status: string, counts: array<string,int>, total_rows: int}|null
+     */
+    public function getPhase2Progress(string $sessionId): ?array
+    {
+        $batch = $this->getBatchBySession($sessionId);
+        if ($batch === null) {
+            return null;
+        }
+
+        $summary = (new PaymentStagingTable())->getImportSummary($sessionId);
+        $total = (int) ($batch['phase2_total'] ?? 0);
+
+        return [
+            'batch_id' => (string) ($batch['batch_id'] ?? ''),
+            'status' => (string) ($batch['status'] ?? ''),
+            'counts' => $summary,
+            'total_rows' => $total,
+        ];
     }
 
     /**
@@ -362,6 +477,113 @@ final class BatchProcessor
         ], $rows));
 
         return wp_json_encode($conflicts) ?: null;
+    }
+
+    /**
+     * Process one Phase 2 chunk (Slice 5). The wicket_import_process_phase2_chunk
+     * AS callback. Claims a bounded chunk of pending payment rows, runs the
+     * PaymentMatcher per row, advances status, then self-schedules.
+     */
+    public function processPhase2Chunk(string $batchId, string $sessionId, int $attempt = 1): void
+    {
+        if ($attempt > $this->maxPhase2Chunks($sessionId)) {
+            $this->logger?->error('Phase 2 reschedule cap exceeded; aborting.', [
+                'batch_id' => $batchId, 'session_id' => $sessionId, 'attempt' => $attempt,
+            ]);
+            $this->finishRun($batchId, 'failed', []);
+
+            return;
+        }
+
+        $staging = new PaymentStagingTable();
+        $chunkSize = (int) apply_filters('wicket_import_chunk_size', WICKET_IMPORT_CHUNK_SIZE);
+        $claimed = $staging->claimChunk($sessionId, $chunkSize);
+
+        if ($claimed === false) {
+            $this->logger?->error('Phase 2 claimChunk DB error; aborting.', [
+                'batch_id' => $batchId, 'session_id' => $sessionId,
+            ]);
+            $this->finishRun($batchId, 'failed', []);
+
+            return;
+        }
+
+        if ($claimed === 0) {
+            // Phase 2 drained.
+            $this->finishRun($batchId, 'processing_complete', [], [
+                'phase2_completed_at' => \current_time('mysql', true),
+            ]);
+
+            return;
+        }
+
+        $matcher = new PaymentMatcher();
+        $rows = $staging->getProcessingBySession($sessionId);
+        foreach ($rows as $row) {
+            $stagingId = (int) ($row['id'] ?? 0);
+            try {
+                $data = $this->decode($row['raw_data'] ?? null);
+                // Order meta stores the human-readable batch_label (D-LOCKBOX-3 +
+                // Story 12: the LABEL is the reporting key; the UUID is the join
+                // key). The seam filter keys on _batch_id meta, so we pass the
+                // label here.
+                $batchLabel = (string) ($this->getBatchBySession($sessionId)['batch_label'] ?? '');
+                $order = $matcher->resolveMatch($data, $batchLabel, $this->logger);
+                if ($order === null) {
+                    $staging->updateImportResult(
+                        $stagingId,
+                        'failed',
+                        PaymentMatcher::reasonFor($data, 0, false)
+                    );
+                    continue;
+                }
+                $matched = $matcher->applyMatch($order, $data, $this->logger);
+                $staging->updateMatch($stagingId, (int) $matched['order_id'], wp_json_encode($matched['subscription_ids']));
+                $staging->updateImportResult($stagingId, 'imported', 'Payment matched; order processed.');
+            } catch (\Throwable $e) {
+                $this->logger?->error('Payment match threw; marking the row failed and continuing.', [
+                    'batch_id' => $batchId, 'row_id' => $stagingId, 'error' => $e->getMessage(),
+                ]);
+                $staging->updateImportResult($stagingId, 'failed', 'Chunk processing exception: ' . $e->getMessage());
+            }
+        }
+
+        $this->scheduleNextPhase2Chunk($batchId, $sessionId, $attempt);
+    }
+
+    private function scheduleNextPhase2Chunk(string $batchId, string $sessionId, int $attempt): void
+    {
+        if (!function_exists('as_schedule_single_action')) {
+            return;
+        }
+        \as_schedule_single_action(time(), self::PHASE2_CHUNK_HOOK, [$batchId, $sessionId, $attempt + 1]);
+    }
+
+    private function maxPhase2Chunks(string $sessionId): int
+    {
+        $batch = $this->getBatchBySession($sessionId);
+        $total = (int) ($batch['phase2_total'] ?? 0);
+        $chunkSize = (int) apply_filters('wicket_import_chunk_size', WICKET_IMPORT_CHUNK_SIZE);
+
+        return (int) ceil($total / max(1, $chunkSize)) + self::RESCHEDULE_HEADROOM;
+    }
+
+    /**
+     * Decode the raw_data JSON blob on a payment row. Centralized + forgiving
+     * so a malformed blob never fatals the chunk.
+     *
+     * @return array<string,mixed>
+     */
+    private function decode(mixed $raw): array
+    {
+        if (is_string($raw)) {
+            $decoded = json_decode($raw, true);
+            if (is_array($decoded)) {
+                return $decoded;
+            }
+        }
+
+        return is_array($raw) ? $raw : [];
     }
 
     /**

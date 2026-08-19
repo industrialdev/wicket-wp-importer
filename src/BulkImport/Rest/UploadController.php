@@ -108,6 +108,23 @@ final class UploadController
             'permission_callback' => $permission,
         ]);
 
+        // Slice 5 (Phase 2 / payment matching) routes.
+        register_rest_route($namespace, $sessionBase . '/run-phase2', [
+            'methods'             => 'POST',
+            'callback'            => [$this, 'handleRunPhase2'],
+            'permission_callback' => $permission,
+        ]);
+        register_rest_route($namespace, $sessionBase . '/progress', [
+            'methods'             => 'GET',
+            'callback'            => [$this, 'handleProgress'],
+            'permission_callback' => $permission,
+        ]);
+        register_rest_route($namespace, $sessionBase . '/retry', [
+            'methods'             => 'POST',
+            'callback'            => [$this, 'handleRetry'],
+            'permission_callback' => $permission,
+        ]);
+
         register_rest_route($namespace, $sessionBase, [
             'methods'             => 'DELETE',
             'callback'            => [$this, 'handleSessionDelete'],
@@ -728,6 +745,109 @@ final class UploadController
         return new WP_REST_Response([
             'session_id' => $sessionId,
             'batch_id'   => $batchId,
+        ], 200);
+    }
+
+    /**
+     * POST /import/session/{id}/run-phase2 (Slice 5) — transition the most
+     * recent batch for the session from pending_review to phase2_running,
+     * schedule the first Phase 2 chunk, return the batch_id.
+     *
+     * @return WP_REST_Response|WP_Error
+     */
+    public function handleRunPhase2(WP_REST_Request $request)
+    {
+        if (!\WicketImporter\Admin\ChequeReviewPage::isPhase2Available()) {
+            return $this->error(
+                'phase2_disabled_by_client_config',
+                __('Phase 2 (payment matching) is disabled by site configuration.', 'wicket-wp-importer'),
+                403
+            );
+        }
+
+        $sessionId = (string) ($request['id'] ?? '');
+        $plugin = Plugin::get_instance();
+        $batchId = $plugin->BatchProcessor()->startPhase2(
+            $sessionId,
+            get_current_user_id()
+        );
+
+        if ($batchId === null) {
+            return $this->error(
+                'phase2_not_ready',
+                __('No pending_review batch for this session; Phase 1 must complete first.', 'wicket-wp-importer'),
+                409
+            );
+        }
+
+        return new WP_REST_Response([
+            'session_id' => $sessionId,
+            'batch_id' => $batchId,
+            'status' => 'phase2_running',
+        ], 200);
+    }
+
+    /**
+     * GET /import/session/{id}/progress (Slice 5) — return the Phase 2 batch
+     * status + per-status row counts for the admin UI to render a live view.
+     *
+     * @return WP_REST_Response|WP_Error
+     */
+    public function handleProgress(WP_REST_Request $request)
+    {
+        $sessionId = (string) ($request['id'] ?? '');
+        $progress = Plugin::get_instance()->BatchProcessor()->getPhase2Progress($sessionId);
+        if ($progress === null) {
+            return $this->error(
+                'phase2_batch_not_found',
+                __('No batch found for this session.', 'wicket-wp-importer'),
+                404
+            );
+        }
+
+        // Surface the per-site Phase 2 availability so the admin UI can render
+        // a clear "disabled by site configuration" state before the batch even
+        // lands. Phase 2 ships OFF by default; clients opt in via their theme.
+        $progress['enabled'] = \WicketImporter\Admin\ChequeReviewPage::isPhase2Available();
+
+        return new WP_REST_Response($progress, 200);
+    }
+
+    /**
+     * POST /import/session/{id}/retry (Slice 5) — reset Phase 2 failed /
+     * needs_review rows to pending and re-schedule the chunk chain. Idempotent
+     * in intent but guarded by the batch status (must be processing_complete).
+     *
+     * @return WP_REST_Response|WP_Error
+     */
+    public function handleRetry(WP_REST_Request $request)
+    {
+        if (!\WicketImporter\Admin\ChequeReviewPage::isPhase2Available()) {
+            return $this->error(
+                'phase2_disabled_by_client_config',
+                __('Phase 2 (payment matching) is disabled by site configuration.', 'wicket-wp-importer'),
+                403
+            );
+        }
+
+        $sessionId = (string) ($request['id'] ?? '');
+        $batchId = Plugin::get_instance()->BatchProcessor()->retryPhase2(
+            $sessionId,
+            get_current_user_id()
+        );
+
+        if ($batchId === null) {
+            return $this->error(
+                'phase2_retry_unavailable',
+                __('Phase 2 retry only applies to a batch that already completed; start a new run instead.', 'wicket-wp-importer'),
+                409
+            );
+        }
+
+        return new WP_REST_Response([
+            'session_id' => $sessionId,
+            'batch_id' => $batchId,
+            'status' => 'phase2_running',
         ], 200);
     }
 

@@ -50,6 +50,8 @@ final class ChequeReviewPage
         echo '<div class="wicket-importer" data-screen="cheque-review">';
         $this->renderBackLink();
 
+        $this->renderPhase2Notice();
+
         if ($sessionId === '' || preg_match(self::SESSION_ID_PATTERN, $sessionId) !== 1) {
             $this->renderEmptyState();
             echo '</div>';
@@ -89,6 +91,33 @@ final class ChequeReviewPage
         echo '<p><a href="' . esc_url($historyUrl) . '">&larr; '
             . esc_html__('Back to Import History', 'wicket-wp-importer')
             . '</a></p>';
+    }
+
+    /**
+     * Surface a one-time admin notice when the Proceed-to-Phase-2 redirect
+     * carried a status query var (started / not_ready / disabled_by_config).
+     */
+    private function renderPhase2Notice(): void
+    {
+        $status = (string) ($_GET['wicket_import_phase2'] ?? '');
+        if ($status === '') {
+            return;
+        }
+        $message = match ($status) {
+            'started' => __('Phase 2 started. The match engine is processing rows in the background.', 'wicket-wp-importer'),
+            'not_ready' => __('Phase 2 could not start: no pending_review batch exists for this session yet.', 'wicket-wp-importer'),
+            'disabled_by_config' => __('Phase 2 is disabled by site configuration. Enable it from the client theme to arm this gate.', 'wicket-wp-importer'),
+            default => '',
+        };
+        if ($message === '') {
+            return;
+        }
+        $class = $status === 'started' ? 'notice-success' : 'notice-warning';
+        printf(
+            '<div class="notice %s"><p>%s</p></div>',
+            esc_attr($class),
+            esc_html($message)
+        );
     }
 
     private function renderEmptyState(): void
@@ -156,6 +185,7 @@ final class ChequeReviewPage
     private function renderGate(array $batch, string $sessionId): void
     {
         $enabled = self::isGateEnabled($batch);
+        $available = self::isPhase2Available();
         $status = (string) ($batch['status'] ?? '');
 
         echo '<div class="wicket-importer-review-gate">';
@@ -171,16 +201,22 @@ final class ChequeReviewPage
         );
         echo '</form>';
 
-        // Always explain: Phase 2 is unbuilt (Slice 5), and the gate state.
+        // Always explain the gate state. Two reasons it can be disabled:
+        //   1. Batch is not in pending_review (e.g. running, completed).
+        //   2. The site has not enabled Phase 2 via the wicket_import_phase2_enabled
+        //      filter (Phase 2 ships off by default; clients opt in).
         echo '<p class="description">';
-        if (!$enabled) {
+        if (!$available) {
+            echo esc_html__('Phase 2 (payment matching) is disabled by site configuration; enable it from the client theme to arm this gate.', 'wicket-wp-importer');
+        } elseif (!$enabled) {
             echo esc_html(sprintf(
                 /* translators: %s: batch status. */
                 __('The gate is armed only when the batch is pending_review. This batch is: %s.', 'wicket-wp-importer'),
                 $status === '' ? '—' : $status
-            )) . ' ';
+            ));
+        } else {
+            echo esc_html__('The gate is armed: a fresh batch in pending_review can be moved to Phase 2.', 'wicket-wp-importer');
         }
-        echo esc_html__('Phase 2 (payment matching) is not yet available; it ships with Slice 5.', 'wicket-wp-importer');
         echo '</p>';
         echo '</div>';
     }
@@ -217,8 +253,28 @@ final class ChequeReviewPage
         $sessionId = sanitize_text_field(wp_unslash($_POST['session_id'] ?? ''));
         $redirect = admin_url('admin.php?page=wicket-wp-importer&tab=cheque-review&session_id=' . rawurlencode($sessionId));
 
-        // Slice 5 will trigger Phase 2 here; until then, surface the gap.
-        wp_safe_redirect(add_query_arg('wicket_import_phase2', 'unavailable', $redirect));
+        // Phase 2 ships off by default in core (mechanism/policy). Refuse the
+        // proceed if the site hasn't enabled it via the wicket_import_phase2_enabled
+        // filter, mirroring the REST route gate.
+        if (!self::isPhase2Available()) {
+            wp_safe_redirect(add_query_arg('wicket_import_phase2', 'disabled_by_config', $redirect));
+            exit;
+        }
+
+        // Arm the Phase 2 chain directly (no REST roundtrip; admin-post already
+        // verified capability + nonce). Returns null when no pending_review batch
+        // exists for the session (mirrors the REST 409 path).
+        $batchId = \WicketImporter\WicketImporter::get_instance()->BatchProcessor()->startPhase2(
+            $sessionId,
+            get_current_user_id()
+        );
+
+        if ($batchId === null) {
+            wp_safe_redirect(add_query_arg('wicket_import_phase2', 'not_ready', $redirect));
+            exit;
+        }
+
+        wp_safe_redirect(add_query_arg(['wicket_import_phase2' => 'started', 'batch_id' => $batchId], $redirect));
         exit;
     }
 
@@ -261,13 +317,34 @@ final class ChequeReviewPage
     }
 
     /**
-     * The Proceed-to-Phase-2 gate is armed only for a pending_review batch.
+     * The Proceed-to-Phase-2 gate is armed only when the batch is in
+     * pending_review AND the client has enabled Phase 2 for this site.
+     *
+     * Phase 2 is OFF by default in core (mechanism/policy: the matching
+     * engine lives in the importer, but whether the importer OFFERS it to
+     * a given client is a per-site decision). Each client enables it by
+     * answering the wicket_import_phase2_enabled filter from its child
+     * theme; a site that never opts in never sees the gate or the
+     * /run-phase2 endpoint working.
      *
      * @param array<string,mixed>|null $batch
      */
     public static function isGateEnabled(?array $batch): bool
     {
-        return $batch !== null && ($batch['status'] ?? null) === 'pending_review';
+        if ($batch === null || ($batch['status'] ?? null) !== 'pending_review') {
+            return false;
+        }
+        return (bool) apply_filters('wicket_import_phase2_enabled', false);
+    }
+
+    /**
+     * Whether the importer offers Phase 2 on this site at all. Independent of
+     * the per-batch pending_review gate so the admin UI can show "Phase 2
+     * disabled by site configuration" before the batch even lands.
+     */
+    public static function isPhase2Available(): bool
+    {
+        return (bool) apply_filters('wicket_import_phase2_enabled', false);
     }
 
     /**
