@@ -161,8 +161,16 @@ class ProductResolver
         $entries = $this->mappingResolver()->mappingsForRoles($roles)['discounts'] ?? [];
         $ids = [];
         foreach ($entries as $entry) {
-            if (($entry->applicationType ?? '') === 'product' && !empty($entry->productId)) {
-                $ids[] = (int) $entry->productId;
+            // SKU-canonical (D-LOCKBOX-1): entries may carry only a SKU;
+            // resolve at call time like every other mapping consumer.
+            // Reading $entry->productId directly here silently dropped every
+            // SKU-only discount and caused a false-positive divergence vs the
+            // actual order total MappingResolver::applyMappings() builds.
+            if (($entry->applicationType ?? '') === 'product') {
+                $resolved = $entry->resolveProductId();
+                if ($resolved !== null && $resolved > 0) {
+                    $ids[] = $resolved;
+                }
             }
         }
 

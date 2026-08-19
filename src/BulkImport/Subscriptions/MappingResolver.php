@@ -223,6 +223,9 @@ final class MappingResolver
 
         // Steady-state WP roles carry no mapping signal (nothing maps them);
         // keep them anyway — the mapping equality filter decides, not this.
+        // ASSUMPTION: mapping role slugs are namespaced (e.g. late-fee-1) and
+        // cannot collide with stock WP roles (administrator, subscriber, etc.).
+        // If a client ever picks a colliding slug this would silently misfire.
         return array_values(array_filter(
             array_map(static fn ($r): string => (string) $r, $user->roles),
             static fn (string $r): bool => $r !== ''

@@ -58,14 +58,24 @@ final class ChequeRowProcessor implements RowProcessor
         // Client-sourced inputs (OBA answers these from its Bar ID; defaults are
         // inert so core never references a client identifier).
         $csvTotal = (float) ($data['order_total'] ?? 0);
-        $membershipPostId = (int) apply_filters('wicket_import_resolve_membership_post', 0, $memberData);
-        $sectionSlugs = (array) apply_filters('wicket_import_resolve_section_slugs', [], $memberData);
 
-        // Story 1: fresh MDP roles BEFORE resolution — the tier/discount/late-fee
-        // mappings key on the member's WP user roles, so a client sync hook runs
-        // here (per-row, single correctness point). The importer fires the seam;
-        // the client owns WHAT syncs (D-LOCKBOX-3 mechanism/policy).
-        do_action('wicket_import_sync_member_roles', $membershipPostId, $memberData);
+        // Story 1: fresh MDP roles BEFORE any resolution — the tier/section/
+        // mapping lookups below all read the member's WP user state (memberships
+        // by user, sections by user, role-keyed mappings via get_userdata). A
+        // stale sync would feed every downstream filter a stale role set.
+        do_action('wicket_import_sync_member_roles', $memberData);
+
+        $membershipPostId = (int) apply_filters('wicket_import_resolve_membership_post', 0, $memberData);
+        // Populate the (otherwise dead) tierPostId field so downstream logs and
+        // any future consumers see the real value, not a misleading zero.
+        $memberData = new MemberData(
+            personUuid: $memberData->personUuid,
+            person: $memberData->person,
+            row: $memberData->row,
+            tierPostId: (int) get_post_meta($membershipPostId, 'membership_tier_post_id', true),
+            stagingId: $memberData->stagingId,
+        );
+        $sectionSlugs = (array) apply_filters('wicket_import_resolve_section_slugs', [], $memberData);
 
         $resolved = $this->productResolver->resolve($membershipPostId, $sectionSlugs, $csvTotal);
         if ($resolved->isError()) {
