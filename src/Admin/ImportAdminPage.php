@@ -1086,6 +1086,13 @@ class ImportAdminPage
         $file = isset($_GET['file']) ? sanitize_text_field(wp_unslash($_GET['file'])) : '';
         $userId = isset($_GET['user']) ? (int) $_GET['user'] : 0;
 
+        // Sort (M8): whitelisted column + direction only; never interpolate
+        // raw querystring into the ORDER BY.
+        $sortCols = ['created_at' => 'b.created_at', 'status' => 'b.status', 'csv_filename' => 'b.csv_filename'];
+        $orderby = isset($_GET['orderby']) ? sanitize_key(wp_unslash($_GET['orderby'])) : '';
+        $orderCol = $sortCols[$orderby] ?? 'b.created_at';
+        $dir = strtoupper(isset($_GET['order']) ? sanitize_key(wp_unslash($_GET['order'])) : '') === 'ASC' ? 'ASC' : 'DESC';
+
         // Build WHERE.
         $where = ' WHERE 1=1';
         $params = [];
@@ -1130,7 +1137,7 @@ class ImportAdminPage
 			FROM {$batchesTable} b
 			LEFT JOIN {$usersTable} u ON u.ID = b.created_by_user_id
 			{$where}
-			ORDER BY b.created_at DESC
+			ORDER BY {$orderCol} {$dir}
 			LIMIT %d OFFSET %d";
         $pageParams = array_merge($params, [$perPage, $offset]);
         $rows = $wpdb->get_results($wpdb->prepare($sql, $pageParams));
@@ -1152,10 +1159,25 @@ class ImportAdminPage
         if ($userId > 0) {
             $filterArgs['user'] = $userId;
         }
+        if (isset($sortCols[$orderby])) {
+            $filterArgs['orderby'] = $orderby;
+            if ($dir === 'ASC') {
+                $filterArgs['order'] = 'asc';
+            }
+        }
         $baseUrl = add_query_arg(
             $filterArgs,
             admin_url('admin.php?page=wicket-wp-importer&tab=history')
         );
+
+        // M8: sortable column headers (created_at / file name / status),
+        // built on the whitelisted ORDER BY above so pagination keeps the sort.
+        $sortUrl = static function (string $col) use ($baseUrl, $orderby, $dir): string {
+            $nextDir = ($orderby === $col && $dir === 'DESC') ? 'asc' : 'desc';
+
+            return add_query_arg(['orderby' => $col, 'order' => $nextDir], $baseUrl);
+        };
+        $sortArrow = static fn (string $col): string => $orderby === $col ? ($dir === 'ASC' ? ' ↑' : ' ↓') : '';
         ?>
 		<div class="wicket-importer-history">
 			<form method="get" class="wicket-importer-history-filters">
@@ -1166,7 +1188,7 @@ class ImportAdminPage
 					<span><?php esc_html_e('Status', 'wicket-wp-importer'); ?></span>
 					<select name="status">
 						<option value=""><?php esc_html_e('Any', 'wicket-wp-importer'); ?></option>
-						<?php foreach (['pending', 'running', 'completed', 'failed', 'cleared'] as $opt) : ?>
+						<?php foreach (['pending', 'running', 'pending_review', 'phase2_running', 'processing_complete', 'completed', 'failed', 'cleared'] as $opt) : ?>
 							<option value="<?php echo esc_attr($opt); ?>" <?php selected($status, $opt); ?>>
 								<?php echo esc_html(ucfirst($opt)); ?>
 							</option>
@@ -1211,10 +1233,10 @@ class ImportAdminPage
 				<table class="widefat striped wicket-importer-history-table">
 					<thead>
 						<tr>
-							<th><?php esc_html_e('Started', 'wicket-wp-importer'); ?></th>
-							<th><?php esc_html_e('File', 'wicket-wp-importer'); ?></th>
+							<th><a href="<?php echo esc_url($sortUrl('created_at')); ?>"><?php esc_html_e('Started', 'wicket-wp-importer'); ?><?php echo esc_html($sortArrow('created_at')); ?></a></th>
+							<th><a href="<?php echo esc_url($sortUrl('csv_filename')); ?>"><?php esc_html_e('File', 'wicket-wp-importer'); ?><?php echo esc_html($sortArrow('csv_filename')); ?></a></th>
 							<th><?php esc_html_e('User', 'wicket-wp-importer'); ?></th>
-							<th><?php esc_html_e('Status', 'wicket-wp-importer'); ?></th>
+							<th><a href="<?php echo esc_url($sortUrl('status')); ?>"><?php esc_html_e('Status', 'wicket-wp-importer'); ?><?php echo esc_html($sortArrow('status')); ?></a></th>
 							<th><?php esc_html_e('Rows', 'wicket-wp-importer'); ?></th>
 							<th><?php esc_html_e('Progress', 'wicket-wp-importer'); ?></th>
 							<th><?php esc_html_e('Duration', 'wicket-wp-importer'); ?></th>
@@ -1231,6 +1253,7 @@ class ImportAdminPage
 						        'phase1_failed'       => (int) $row->phase1_failed,
 						        'phase1_needs_review' => (int) $row->phase1_needs_review,
 						        'phase2_total'        => (int) $row->phase2_total,
+						        'phase2_succeeded'    => (int) $row->phase2_succeeded,
 						    ]);
 						    $started = mysql2date('Y-m-d H:i', $row->created_at);
 						    $finished = $row->finished_at ? mysql2date('Y-m-d H:i', $row->finished_at) : '—';
@@ -1263,7 +1286,15 @@ class ImportAdminPage
 											<button type="submit" class="button button-link-delete"><?php esc_html_e('Clear session', 'wicket-wp-importer'); ?></button>
 										</form>
 									<?php else : ?>
-										&mdash;
+										<?php if (in_array($row->status, ['pending_review', 'phase2_running', 'processing_complete'], true)) : ?>
+											<a class="button button-small" href="<?php echo esc_url(admin_url('admin.php?page=wicket-wp-importer&tab=cheque-review&session_id=' . rawurlencode((string) $row->session_id))); ?>"><?php esc_html_e('Phase 2 review', 'wicket-wp-importer'); ?></a>
+										<?php endif; ?>
+										<?php if (in_array($row->status, ['pending_review', 'processing_complete', 'completed', 'failed'], true)) : ?>
+											<a class="button button-small" href="<?php echo esc_url(wp_nonce_url($this->restBase() . '/session/' . rawurlencode((string) $row->session_id) . '/results-csv', 'wp_rest', '_wpnonce')); ?>"><?php esc_html_e('Report', 'wicket-wp-importer'); ?></a>
+										<?php endif; ?>
+										<?php if (!in_array($row->status, ['pending_review', 'phase2_running', 'processing_complete', 'completed', 'failed'], true)) : ?>
+											&mdash;
+										<?php endif; ?>
 									<?php endif; ?>
 								</td>
 							</tr>
@@ -1328,6 +1359,14 @@ class ImportAdminPage
                     : __('Members imported', 'wicket-wp-importer');
             case 'failed':
                 return __('Import failed', 'wicket-wp-importer');
+            case 'phase2_running':
+                return sprintf(
+                    __('Phase 2 in progress (%1$d / %2$d payments matched)', 'wicket-wp-importer'),
+                    (int) ($batch['phase2_succeeded'] ?? 0),
+                    (int) ($batch['phase2_total'] ?? 0)
+                );
+            case 'processing_complete':
+                return __('Lockbox run complete', 'wicket-wp-importer');
             case 'cleared':
                 return $settledPhase1 > 0
                     ? __('Cleared mid-run', 'wicket-wp-importer')
@@ -1461,6 +1500,8 @@ class ImportAdminPage
 						<td><?php echo esc_html(sprintf('%d / %d / %d', (int) $batch->phase1_succeeded, (int) $batch->phase1_failed, (int) $batch->phase1_needs_review)); ?></td></tr>
 					<tr><th><?php esc_html_e('Phase 2 (ok / fail / review)', 'wicket-wp-importer'); ?></th>
 						<td><?php echo esc_html(sprintf('%d / %d / %d', (int) $batch->phase2_succeeded, (int) $batch->phase2_failed, (int) $batch->phase2_needs_review)); ?></td></tr>
+					<tr><th><?php esc_html_e('Phase 2 started', 'wicket-wp-importer'); ?></th><td><?php echo esc_html($batch->phase2_started_at ? mysql2date('Y-m-d H:i', $batch->phase2_started_at) : '—'); ?></td></tr>
+					<tr><th><?php esc_html_e('Phase 2 finished', 'wicket-wp-importer'); ?></th><td><?php echo esc_html($batch->phase2_completed_at ? mysql2date('Y-m-d H:i', $batch->phase2_completed_at) : '—'); ?></td></tr>
 					<tr><th><?php esc_html_e('Finished', 'wicket-wp-importer'); ?></th><td><?php echo esc_html($batch->finished_at ? mysql2date('Y-m-d H:i', $batch->finished_at) : '—'); ?></td></tr>
 					<tr><th><?php esc_html_e('Duration', 'wicket-wp-importer'); ?></th><td><?php echo esc_html(self::formatDuration((string) $batch->created_at, (string) $batch->finished_at)); ?></td></tr>
 				</tbody>
@@ -1471,6 +1512,17 @@ class ImportAdminPage
 				<a class="button" href="<?php echo esc_url(wp_nonce_url($sourceRest . '/session/' . $batch->session_id . '/source-csv', 'wp_rest', '_wpnonce')); ?>">
 					<?php esc_html_e('Download source CSV', 'wicket-wp-importer'); ?>
 				</a>
+				<a class="button" href="<?php echo esc_url(wp_nonce_url($sourceRest . '/session/' . $batch->session_id . '/results-csv', 'wp_rest', '_wpnonce')); ?>">
+					<?php esc_html_e('Download report CSV', 'wicket-wp-importer'); ?>
+				</a>
+				<a class="button" href="<?php echo esc_url(wp_nonce_url($sourceRest . '/session/' . $batch->session_id . '/error-csv?context=cheque', 'wp_rest', '_wpnonce')); ?>">
+					<?php esc_html_e('Export errors (CSV)', 'wicket-wp-importer'); ?>
+				</a>
+				<?php if (in_array($batch->status, ['pending_review', 'phase2_running', 'processing_complete'], true)) : ?>
+					<a class="button button-primary" href="<?php echo esc_url(admin_url('admin.php?page=wicket-wp-importer&tab=cheque-review&session_id=' . rawurlencode((string) $batch->session_id))); ?>">
+						<?php $batch->status === 'pending_review' ? esc_html_e('Start Phase 2', 'wicket-wp-importer') : esc_html_e('Open Phase 2 review', 'wicket-wp-importer'); ?>
+					</a>
+				<?php endif; ?>
 				<?php if ($batch->status === 'running') : ?>
 					<form
 						method="post"
