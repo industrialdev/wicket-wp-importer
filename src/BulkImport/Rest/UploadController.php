@@ -35,6 +35,7 @@ use WP_REST_Response;
  *   GET    /import/session/{id}/results-csv    Full results CSV (AD14).
  *   GET    /import/session/{id}/error-csv      Failed + needs_review CSV (AD14).
  *   GET    /import/session/{id}/source-csv    Retained source CSV download.
+ *   POST   /import/session/{id}/payment-csv   Stage the payment CSV for a pending_review batch (M7).
  *   POST   /import/session/{id}/run            Conflict pre-pass + destructive import.
  *   POST   /import/cheque/session/{id}/run   Trigger the cheque bulk-create batch (Action Scheduler).
  *   DELETE /import/session/{id}                Clear the session.
@@ -122,6 +123,13 @@ final class UploadController
         register_rest_route($namespace, $sessionBase . '/retry', [
             'methods'             => 'POST',
             'callback'            => [$this, 'handleRetry'],
+            'permission_callback' => $permission,
+        ]);
+
+        // M7 (Story 9): stage the payment CSV that drives a Phase 2 run.
+        register_rest_route($namespace, $sessionBase . '/payment-csv', [
+            'methods'             => 'POST',
+            'callback'            => [$this, 'handlePaymentUpload'],
             'permission_callback' => $permission,
         ]);
 
@@ -221,61 +229,15 @@ final class UploadController
             );
         }
 
-        $file = $request->get_file_params()['file'] ?? null;
-
-        if (!is_array($file) || !isset($file['error'])) {
-            return $this->error('import_no_file', __('No CSV file uploaded.', 'wicket-wp-importer'), 400);
+        [$error, $parse, $path, $originalName] = $this->receiveCsv($request, $columns);
+        if ($error !== null) {
+            return $error;
         }
-
-        // PHP-level upload errors: size overruns -> 413, everything else -> 400.
-        if ($file['error'] !== UPLOAD_ERR_OK) {
-            if (in_array($file['error'], [UPLOAD_ERR_INI_SIZE, UPLOAD_ERR_FORM_SIZE], true)) {
-                return $this->error('import_too_large', __('The uploaded file exceeds the maximum size.', 'wicket-wp-importer'), 413);
-            }
-
-            return $this->error('import_upload_failed', __('The upload failed.', 'wicket-wp-importer'), 400);
-        }
-
-        // S1: gate the extension on the SUBMITTED name BEFORE wp_handle_upload
-        // moves the file into the web-accessible uploads dir. test_type stays
-        // false (CSV has no magic bytes: finfo returns text/plain, so WP's mime
-        // map would reject valid CSVs) — the extension is the only reliable
-        // signal, so check it before the file lands on disk, not after.
-        $originalName = (string) ($file['name'] ?? '');
-        if (strtolower((string) pathinfo($originalName, PATHINFO_EXTENSION)) !== 'csv') {
-            return $this->error('import_bad_type', __('Only .csv files are accepted.', 'wicket-wp-importer'), 415);
-        }
-
-        // wp_handle_upload lives in wp-admin/includes/file.php (not always loaded in REST).
-        if (!function_exists('wp_handle_upload')) {
-            require_once ABSPATH . 'wp-admin/includes/file.php';
-        }
-
-        $upload = wp_handle_upload($file, [
-            'test_form' => false,
-            'test_type' => false,
-        ]);
-
-        if (isset($upload['error'])) {
-            return $this->error('import_upload_failed', $upload['error'], 400);
-        }
-
-        $path = $upload['file'];
 
         $sessionId = '';
 
         try {
             $plugin = Plugin::get_instance();
-            $parse = $plugin->FileParser()->parseFile($path, $columns, $request->get_param('delimiter'));
-
-            if ($parse->hasError()) {
-                return $this->error(
-                    $parse->hasSizeError() ? 'import_too_large' : 'import_parse_failed',
-                    $parse->error ?? __('CSV parse failed.', 'wicket-wp-importer'),
-                    $parse->hasSizeError() ? 413 : 400,
-                    ['missing_headers' => $parse->missingHeaders]
-                );
-            }
 
             // B18: reject an oversized file at UPLOAD, not at /run. Without this
             // a large CSV stages fully then /run returns 413 forever, and the
@@ -322,6 +284,75 @@ final class UploadController
                 Plugin::get_instance()->Logger()->warning('Failed to retain the uploaded CSV for the session.', ['path' => $path, 'session_id' => $sessionId]);
             }
         }
+    }
+
+    /**
+     * Shared file reception for CSV uploads: file param checks, PHP upload
+     * errors, extension gate (S1), wp_handle_upload, and parse. One security
+     * surface for every upload route (member, cheque, payment).
+     *
+     * @param list<ColumnDefinition> $columns
+     *
+     * @return array{0: WP_REST_Response|null, 1: ParseResult|null, 2: string, 3: string}
+     *         [error response, parsed result, moved file path, original filename].
+     *         Exactly one of the first two is non-null.
+     */
+    private function receiveCsv(WP_REST_Request $request, array $columns): array
+    {
+        $file = $request->get_file_params()['file'] ?? null;
+
+        if (!is_array($file) || !isset($file['error'])) {
+            return [$this->error('import_no_file', __('No CSV file uploaded.', 'wicket-wp-importer'), 400), null, '', ''];
+        }
+
+        // PHP-level upload errors: size overruns -> 413, everything else -> 400.
+        if ($file['error'] !== UPLOAD_ERR_OK) {
+            if (in_array($file['error'], [UPLOAD_ERR_INI_SIZE, UPLOAD_ERR_FORM_SIZE], true)) {
+                return [$this->error('import_too_large', __('The uploaded file exceeds the maximum size.', 'wicket-wp-importer'), 413), null, '', ''];
+            }
+
+            return [$this->error('import_upload_failed', __('The upload failed.', 'wicket-wp-importer'), 400), null, '', ''];
+        }
+
+        // S1: gate the extension on the SUBMITTED name BEFORE wp_handle_upload
+        // moves the file into the web-accessible uploads dir. test_type stays
+        // false (CSV has no magic bytes: finfo returns text/plain, so WP's mime
+        // map would reject valid CSVs) — the extension is the only reliable
+        // signal, so check it before the file lands on disk, not after.
+        $originalName = (string) ($file['name'] ?? '');
+        if (strtolower((string) pathinfo($originalName, PATHINFO_EXTENSION)) !== 'csv') {
+            return [$this->error('import_bad_type', __('Only .csv files are accepted.', 'wicket-wp-importer'), 415), null, '', ''];
+        }
+
+        // wp_handle_upload lives in wp-admin/includes/file.php (not always loaded in REST).
+        if (!function_exists('wp_handle_upload')) {
+            require_once ABSPATH . 'wp-admin/includes/file.php';
+        }
+
+        $upload = wp_handle_upload($file, [
+            'test_form' => false,
+            'test_type' => false,
+        ]);
+
+        if (isset($upload['error'])) {
+            return [$this->error('import_upload_failed', $upload['error'], 400), null, '', ''];
+        }
+
+        $path = (string) ($upload['file'] ?? '');
+
+        $parse = Plugin::get_instance()->FileParser()->parseFile($path, $columns, $request->get_param('delimiter'));
+        if ($parse->hasError()) {
+            $error = $this->error(
+                $parse->hasSizeError() ? 'import_too_large' : 'import_parse_failed',
+                $parse->error ?? __('CSV parse failed.', 'wicket-wp-importer'),
+                $parse->hasSizeError() ? 413 : 400,
+                ['missing_headers' => $parse->missingHeaders]
+            );
+
+            return [$error, null, $path, $originalName];
+        }
+
+        return [null, $parse, $path, $originalName];
     }
 
     /**
@@ -746,6 +777,92 @@ final class UploadController
             'session_id' => $sessionId,
             'batch_id'   => $batchId,
         ], 200);
+    }
+
+    /**
+     * POST /import/session/{id}/payment-csv (M7, Story 9) — parse, validate,
+     * and stage the payment CSV that drives a Phase 2 run.
+     *
+     * Same bank-file column contract as the cheque create CSV
+     * (wicket_import_cheque_columns: member identifier + order_total +
+     * check_id). Rows land in wicket_import_payment_records under the SAME
+     * session id as the Phase 1 batch: startPhase2() counts them from there.
+     * The source file is retained under the '<session>-payments' CsvStorage
+     * key so it never collides with the Phase 1 source CSV.
+     *
+     * @return WP_REST_Response|WP_Error
+     */
+    public function handlePaymentUpload(WP_REST_Request $request)
+    {
+        if (!\WicketImporter\Admin\ChequeReviewPage::isPhase2Available()) {
+            return $this->error(
+                'phase2_disabled_by_client_config',
+                __('Phase 2 (payment matching) is disabled by site configuration.', 'wicket-wp-importer'),
+                403
+            );
+        }
+
+        $sessionId = (string) ($request['id'] ?? '');
+        $plugin = Plugin::get_instance();
+
+        $batch = $plugin->BatchProcessor()->getBatchBySession($sessionId);
+        $stagedPayments = array_sum($plugin->PaymentStaging()->getImportSummary($sessionId));
+        $gate = self::paymentUploadGate($batch, $stagedPayments);
+        if ($gate !== null) {
+            return $this->error(
+                $gate,
+                $gate === 'payment_csv_already_staged'
+                    ? __('A payment CSV is already staged for this session. Retry the failed rows instead of uploading again.', 'wicket-wp-importer')
+                    : __('Payments can be uploaded only while the batch is pending_review.', 'wicket-wp-importer'),
+                409
+            );
+        }
+
+        $columns = $this->resolveChequeColumns();
+        [$error, $parse, $path, $originalName] = $this->receiveCsv($request, $columns);
+        if ($error !== null) {
+            return $error;
+        }
+
+        $summary = $plugin->Validation()->validateBatch($parse->rows, $columns);
+        $plugin->PaymentStaging()->insertBatch($this->buildStagedRows($parse->rows, $summary), $sessionId);
+
+        // Retain the payment source CSV (same rationale as Phase 1: staged rows
+        // cannot reconstruct the bank file). Suffix key avoids overwriting the
+        // Phase 1 source. A failed move is non-fatal.
+        if ($path !== '' && file_exists($path) && !CsvStorage::store($path, $sessionId . '-payments')) {
+            $plugin->Logger()->warning('Failed to retain the payment CSV for the session.', ['path' => $path, 'session_id' => $sessionId]);
+        }
+
+        return new WP_REST_Response([
+            'session_id'    => $sessionId,
+            'total_rows'    => $summary->total,
+            'valid_count'   => $summary->validCount,
+            'flagged_count' => count($summary->flagged),
+        ], 200);
+    }
+
+    /**
+     * Pure gate for payment CSV uploads (M7, Story 9). Fail-closed: only a
+     * pending_review batch with zero staged payment rows accepts an upload.
+     * Re-ingest is refused (a re-upload after a run would desync phase2_total
+     * and double-match rows); the retry path resets failed rows instead.
+     *
+     * @param array<string,mixed>|null $batch Batch row from getBatchBySession().
+     *
+     * @return string|null Error code, or null when the upload may proceed.
+     */
+    public static function paymentUploadGate(?array $batch, int $stagedPaymentRows): ?string
+    {
+        if ($batch === null || (string) ($batch['status'] ?? '') !== 'pending_review') {
+            return 'phase2_not_ready';
+        }
+
+        if ($stagedPaymentRows > 0) {
+            return 'payment_csv_already_staged';
+        }
+
+        return null;
     }
 
     /**

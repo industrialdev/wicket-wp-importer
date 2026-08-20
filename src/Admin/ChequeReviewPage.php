@@ -75,6 +75,7 @@ final class ChequeReviewPage
         $this->renderSummary($summary, $batch);
         $this->renderDivergenceNotice($rows);
         $this->renderLogTable($rows);
+        $this->renderPaymentUpload($batch, $sessionId);
         $this->renderGate($batch, $sessionId);
         $this->renderExportLink($sessionId);
 
@@ -105,6 +106,7 @@ final class ChequeReviewPage
         }
         $message = match ($status) {
             'started' => __('Phase 2 started. The match engine is processing rows in the background.', 'wicket-wp-importer'),
+            'payment_uploaded' => __('Payment CSV staged. Review the payment row count, then proceed to Phase 2.', 'wicket-wp-importer'),
             'not_ready' => __('Phase 2 could not start: no pending_review batch exists for this session yet.', 'wicket-wp-importer'),
             'disabled_by_config' => __('Phase 2 is disabled by site configuration. Enable it from the client theme to arm this gate.', 'wicket-wp-importer'),
             default => '',
@@ -112,7 +114,7 @@ final class ChequeReviewPage
         if ($message === '') {
             return;
         }
-        $class = $status === 'started' ? 'notice-success' : 'notice-warning';
+        $class = $status === 'started' || $status === 'payment_uploaded' ? 'notice-success' : 'notice-warning';
         printf(
             '<div class="notice %s"><p>%s</p></div>',
             esc_attr($class),
@@ -180,6 +182,60 @@ final class ChequeReviewPage
         }
 
         $table->display();
+    }
+
+    /**
+     * M7 (Story 9): the payment CSV upload control. Rendered only when Phase 2
+     * is enabled by the site. Once rows are staged it collapses to a summary
+     * line (re-ingest is refused server-side; retry resets failed rows).
+     */
+    private function renderPaymentUpload(array $batch, string $sessionId): void
+    {
+        if (!self::isPhase2Available()) {
+            return;
+        }
+
+        $status = (string) ($batch['status'] ?? '');
+        $payments = Plugin::get_instance()->PaymentStaging()->getImportSummary($sessionId);
+        $staged = array_sum($payments);
+
+        echo '<h2>' . esc_html__('Payment CSV (Phase 2)', 'wicket-wp-importer') . '</h2>';
+
+        if ($staged > 0) {
+            printf(
+                '<p>%s</p>',
+                esc_html(sprintf(
+                    /* translators: %d: staged payment row count. */
+                    _n(
+                        '%d payment row is staged. Proceed to Phase 2 to run the match.',
+                        '%d payment rows are staged. Proceed to Phase 2 to run the match.',
+                        $staged,
+                        'wicket-wp-importer'
+                    ),
+                    $staged
+                ))
+            );
+
+            return;
+        }
+
+        if ($status !== 'pending_review') {
+            echo '<p class="description">' . esc_html__('Upload a payment CSV after the batch reaches pending_review.', 'wicket-wp-importer') . '</p>';
+
+            return;
+        }
+
+        $restUrl = rest_url('/wicket/v1/import/session/' . $sessionId . '/payment-csv');
+        ?>
+		<div class="wicket-importer-payment-upload">
+			<input type="file" id="wicket-importer-payment-file" accept=".csv" />
+			<button type="button" class="button" id="wicket-importer-payment-upload-btn"
+				data-rest-url="<?php echo esc_url($restUrl); ?>">
+				<?php esc_html_e('Upload payment CSV', 'wicket-wp-importer'); ?>
+			</button>
+			<span class="wicket-importer-payment-status" aria-live="polite"></span>
+		</div>
+		<?php
     }
 
     private function renderGate(array $batch, string $sessionId): void
