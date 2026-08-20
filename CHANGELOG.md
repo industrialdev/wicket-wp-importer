@@ -5,6 +5,16 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 <!-- new releases inserted below this line -->
 
+## [1.0.27] - 2026-08-20
+
+### Added
+- **importer:** Phase 2 admin parity in Import History (M8, WWID-2108)
+- **importer:** payment CSV upload endpoint + review UI control (M7, Story 9)
+
+### Fixed
+- **importer:** fatal on admin_init from stale DbInstaller namespace in drift-notice hooks
+
+
 ## [1.0.26] - 2026-08-19
 
 ### Added
