@@ -155,8 +155,8 @@ final class WicketImporter
 
         // DB-drift notice (DV recreation reminder) for admins who updated the
         // plugin without deactivating+reactivating it.
-        add_action('admin_notices', [Database\DbInstaller::class, 'maybeRenderDriftNotice']);
-        add_action('admin_init', [Database\DbInstaller::class, 'dismissDriftNotice']);
+        add_action('admin_notices', [BulkImport\Database\DbInstaller::class, 'maybeRenderDriftNotice']);
+        add_action('admin_init', [BulkImport\Database\DbInstaller::class, 'dismissDriftNotice']);
 
         // TODO Phase 4 (cheque adapter): OrderCreator (On Hold order, cheque
         // payment, customer by Bar ID), the per-row processRow wiring that turns
