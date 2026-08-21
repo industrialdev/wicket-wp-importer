@@ -5,6 +5,12 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 <!-- new releases inserted below this line -->
 
+## [1.0.29] - 2026-08-21
+
+### Fixed
+- **importer:** skip cheque rows with an existing On Hold order (D3)
+
+
 ## [1.0.28] - 2026-08-21
 
 ### Added
