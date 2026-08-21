@@ -186,7 +186,7 @@ final class UploadController
      */
     public function handleUpload(WP_REST_Request $request)
     {
-        return $this->ingestUpload($request, $this->resolveColumns(), capAtInlineMax: true);
+        return $this->ingestUpload($request, $this->resolveColumns(), capAtInlineMax: true, flow: 'member');
     }
 
     /**
@@ -203,7 +203,7 @@ final class UploadController
      */
     public function handleChequeUpload(WP_REST_Request $request)
     {
-        return $this->ingestUpload($request, $this->resolveChequeColumns(), capAtInlineMax: false);
+        return $this->ingestUpload($request, $this->resolveChequeColumns(), capAtInlineMax: false, flow: 'cheque');
     }
 
     /**
@@ -214,7 +214,7 @@ final class UploadController
      *
      * @return WP_REST_Response|WP_Error
      */
-    private function ingestUpload(WP_REST_Request $request, array $columns, bool $capAtInlineMax)
+    private function ingestUpload(WP_REST_Request $request, array $columns, bool $capAtInlineMax, string $flow = 'member')
     {
         // Concurrency gate (plan DB-schema): the active-session check fires before
         // each upload so two uploads can't interleave pending rows. Reject with 409
@@ -267,7 +267,11 @@ final class UploadController
 
             // Record the run in the batches table so the Import History tab
             // lists member imports (BatchProcessor owns the batches writer).
-            $plugin->BatchProcessor()->startRun($sessionId, $originalName, get_current_user_id(), $summary->total);
+            // import_flow tags the session's column contract (member vs
+            // cheque) so both /run routes can reject a cross-flow trigger
+            // (peer review 2026-08-21: ?flow= alone must never decide which
+            // engine a session feeds).
+            $plugin->BatchProcessor()->startRun($sessionId, $originalName, get_current_user_id(), $summary->total, $flow);
 
             return new WP_REST_Response([
                 'session_id'     => $sessionId,
@@ -414,6 +418,19 @@ final class UploadController
                 'import_session_not_found',
                 __('No staged rows found for this session.', 'wicket-wp-importer'),
                 404
+            );
+        }
+
+        // Flow guard (peer review 2026-08-21): the inline member pipeline must
+        // never run rows staged under the cheque column contract. The batch row
+        // tags the session at upload time; ?flow= on the admin screen is
+        // presentational only and cannot reach this decision.
+        $flowBatch = $plugin->BatchProcessor()->getBatchBySession($sessionId);
+        if (($flowBatch['import_flow'] ?? 'member') === 'cheque') {
+            return $this->error(
+                'import_wrong_flow',
+                __('This session is a cheque (lockbox) upload. Run it from the Cheque Review screen.', 'wicket-wp-importer'),
+                409
             );
         }
 
@@ -745,7 +762,7 @@ final class UploadController
      * Enqueues staged cheque rows onto Action Scheduler via
      * BatchProcessor::startBatch (single-chain chunks); unlike the member /run
      * (inline ImportPipeline), this returns immediately with a batch_id. The
-     * cheque upload (column-shaped staging) is a separate endpoint (TODO).
+     * cheque upload (column-shaped staging) ships as /import/cheque/upload.
      *
      * @return WP_REST_Response|WP_Error
      */
@@ -761,6 +778,19 @@ final class UploadController
                 'import_session_not_found',
                 __('No staged rows found for this session.', 'wicket-wp-importer'),
                 404
+            );
+        }
+
+        // Flow guard (peer review 2026-08-21): the cheque bulk-create chain
+        // must only run rows staged under the cheque column contract. Legacy
+        // sessions that pre-date the import_flow column read as 'member' and
+        // are rejected too: re-upload through the cheque flow.
+        $flowBatch = $plugin->BatchProcessor()->getBatchBySession($sessionId);
+        if (($flowBatch['import_flow'] ?? 'member') !== 'cheque') {
+            return $this->error(
+                'import_wrong_flow',
+                __('This session is not a cheque (lockbox) upload. Use the member import flow instead.', 'wicket-wp-importer'),
+                409
             );
         }
 

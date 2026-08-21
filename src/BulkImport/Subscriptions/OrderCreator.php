@@ -56,11 +56,16 @@ class OrderCreator
         );
 
         /*
-         * D3: a member with an existing On Hold order already awaits payment
-         * matching. A second order for the same member would fork the lockbox
-         * match, so the row skips with an error for a human to reconcile.
-         * Covers previous-run leftovers AND duplicates inside the same run
-         * (row N creates the order; row N+k for the same member skips).
+         * D3: a member with an existing bulk-created On Hold order already
+         * awaits payment matching. A second order for the same member would
+         * fork the lockbox match, so the row skips with an error for a human
+         * to reconcile. Covers previous-run leftovers AND duplicates inside
+         * the same run (row N creates the order; row N+k for the same member
+         * skips). Scoped to _batch_id-bearing orders so an UNRELATED On Hold
+         * order (stuck cart, manual payment) never blocks a renewal (peer
+         * review 2026-08-21). Correct under the engine's single-chain,
+         * sequential Action Scheduler model; revisit if chunks ever run
+         * concurrently (check-then-create is not atomic across processes).
          */
         if ($userId > 0 && function_exists('wc_get_orders')) {
             $existing = wc_get_orders([
@@ -68,6 +73,12 @@ class OrderCreator
                 'status'      => ['on-hold'],
                 'limit'       => 1,
                 'return'      => 'objects',
+                'meta_query'  => [
+                    [
+                        'key'     => '_batch_id',
+                        'compare' => 'EXISTS',
+                    ],
+                ],
             ]);
             if (is_array($existing) && $existing !== []) {
                 $hold = $existing[0];

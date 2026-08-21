@@ -122,7 +122,7 @@ class ImportAdminPage
         $this->renderScreenNotices();
 
         if (self::SCREEN_VALIDATION === $screen) {
-            $this->renderValidationScreen($sessionId, $this->currentFlow());
+            $this->renderValidationScreen($sessionId);
         } elseif (self::SCREEN_CONFIRMATION === $screen) {
             $this->renderConfirmationScreen($sessionId);
         } else {
@@ -344,13 +344,19 @@ class ImportAdminPage
      * data-session-id + data-run-url / data-clear-url attributes so Task 8's
      * admin.js can bind without re-deriving the endpoints.
      */
-    private function renderValidationScreen(?string $sessionId, string $flow = ''): void
+    private function renderValidationScreen(?string $sessionId): void
     {
         $rest = $this->restBase();
-        // Cheque/lockbox wizard pass: the run button targets the cheque
-        // bulk-create endpoint (Action Scheduler) and lands on the Cheque
-        // Review tab instead of the inline member confirmation screen.
-        $isCheque = $flow === 'cheque';
+        /*
+         * Cheque/lockbox wizard pass: the run button targets the cheque
+         * bulk-create endpoint (Action Scheduler) and lands on the Cheque
+         * Review tab instead of the inline member confirmation screen.
+         * The flow comes from the session's batches row (written at upload
+         * time), not from ?flow= — a bookmarked or hand-edited URL can no
+         * longer swap the engine a session feeds (peer review 2026-08-21).
+         */
+        $batch = Plugin::get_instance()->BatchProcessor()->getBatchBySession((string) $sessionId);
+        $isCheque = ($batch['import_flow'] ?? '') === 'cheque';
 
         // No session: bounce to upload. The JS flow always passes a session_id,
         // but a direct hit / stale link should not render an empty screen.
@@ -440,7 +446,7 @@ class ImportAdminPage
 					class="button wicket-importer-restart"
 					data-session-id="<?php echo esc_attr($sessionId); ?>"
 					data-clear-url="<?php echo esc_url($rest . '/session/' . $sessionId); ?>"
-					data-upload-url="<?php echo esc_url($this->uploadScreenUrl()); ?>"
+					data-upload-url="<?php echo esc_url($isCheque ? add_query_arg('flow', 'cheque', $this->uploadScreenUrl()) : $this->uploadScreenUrl()); ?>"
 				>
 					<?php esc_html_e('Restart Upload', 'wicket-wp-importer'); ?>
 				</button>

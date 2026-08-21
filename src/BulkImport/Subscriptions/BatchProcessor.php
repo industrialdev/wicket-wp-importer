@@ -66,7 +66,7 @@ final class BatchProcessor
      * Insert a `wicket_import_batches` row for the run start. Returns the new
      * batch_id (a UUID) so the caller can pass it to finishRun.
      */
-    public function startRun(string $sessionId, string $csvFilename, int $createdByUserId, int $totalRows): string
+    public function startRun(string $sessionId, string $csvFilename, int $createdByUserId, int $totalRows, string $flow = 'member'): string
     {
         global $wpdb;
 
@@ -78,9 +78,11 @@ final class BatchProcessor
         // moment as the insert on this path). batch_label is the human-readable
         // reporting key (spec Story 12: YYYYMMDD-HHMM, site timezone) written to
         // _batch_id meta on every order + subscription; generated once here so
-        // every chunk re-reads the SAME label from the row.
+        // every chunk re-reads the SAME label from the row. import_flow tags
+        // the session's column contract (member | cheque) for the run-route
+        // flow guards.
         $wpdb->query($wpdb->prepare(
-            "INSERT INTO {$wpdb->prefix}" . self::TABLE . ' (batch_id, session_id, status, csv_filename, created_by_user_id, csv_row_count, phase1_total, phase1_started_at, batch_label) VALUES (%s, %s, %s, %s, %d, %d, %d, %s, %s)',
+            "INSERT INTO {$wpdb->prefix}" . self::TABLE . ' (batch_id, session_id, status, csv_filename, created_by_user_id, csv_row_count, phase1_total, phase1_started_at, batch_label, import_flow) VALUES (%s, %s, %s, %s, %d, %d, %d, %s, %s, %s)',
             $batchId,
             $sessionId,
             'running',
@@ -89,7 +91,8 @@ final class BatchProcessor
             $totalRows,
             $totalRows,
             \current_time('mysql', true),
-            \current_time('Ymd-Hi')
+            \current_time('Ymd-Hi'),
+            $flow === 'cheque' ? 'cheque' : 'member'
         ));
 
         $this->logger?->info('Batch run started.', [
@@ -225,7 +228,16 @@ final class BatchProcessor
 
     public function startBatch(string $sessionId, string $csvFilename, int $createdByUserId, int $totalRows): string
     {
-        $batchId = $this->startRun($sessionId, $csvFilename, $createdByUserId, $totalRows);
+        // The run row inherits the session's flow from the upload row (the
+        // upload endpoint is the only place the contract is chosen); callers
+        // cannot re-tag a session by passing a different flow here.
+        $flow = 'member';
+        $uploadBatch = $this->getBatchBySession($sessionId);
+        if ($uploadBatch !== null && ($uploadBatch['import_flow'] ?? '') === 'cheque') {
+            $flow = 'cheque';
+        }
+
+        $batchId = $this->startRun($sessionId, $csvFilename, $createdByUserId, $totalRows, $flow);
         $this->scheduleNextChunk($batchId, $sessionId, 1);
 
         return $batchId;
