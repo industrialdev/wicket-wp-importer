@@ -18,8 +18,9 @@ use WicketImporter\WicketImporter as Plugin;
  * WP_List_Table, an error CSV export (AD14, via Support\CsvExporter), and a
  * "Proceed to Phase 2" button armed ONLY when the batch is in the
  * pending_review state (the gate; BatchProcessor lands Phase 1 completion
- * there). The button's handler is a stub: Phase 2 is unbuilt, so it redirects
- * back with a notice instead of mutating anything.
+ * there). The button's handler (handleProceed) verifies the Phase 2 site
+ * gate, then arms Phase 2 via BatchProcessor::startPhase2 (shipped Slice 5).
+ * The payment CSV that drives the run stages through the M7 control below.
  *
  * DISTINCT from the OBA validation screen: this is the cheque Phase 1 -> 2
  * gate, mounted under its own tab. OBA's flagged/valid + Upload/Restart screen
@@ -293,10 +294,11 @@ final class ChequeReviewPage
     // ---------------------------------------------------------------------
 
     /**
-     * Handle the Proceed-to-Phase-2 POST. Phase 2 is unbuilt (Slice 5), so this
-     * is a fail-closed stub: verify nonce + capability, then redirect back to
-     * the review with a notice. Never mutates the batch. Slice 5 replaces the
-     * body with the real Phase 2 trigger.
+     * Handle the Proceed-to-Phase-2 POST (Slice 5). Fail-closed gates first:
+     * capability, nonce, and the wicket_import_phase2_enabled site gate
+     * (Phase 2 ships off by default; mirrors the REST route gate). Then arms
+     * the Phase 2 chain via BatchProcessor::startPhase2 and redirects back
+     * to the review with the outcome (started / not_ready / disabled).
      */
     public static function handleProceed(): void
     {
