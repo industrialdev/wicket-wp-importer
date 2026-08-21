@@ -5,6 +5,12 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 <!-- new releases inserted below this line -->
 
+## [1.0.30] - 2026-08-21
+
+### Fixed
+- **importer:** enforce session flow server-side, scope D3 to bulk orders
+
+
 ## [1.0.29] - 2026-08-21
 
 ### Fixed
