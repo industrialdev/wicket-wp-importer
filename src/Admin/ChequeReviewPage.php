@@ -49,16 +49,19 @@ final class ChequeReviewPage
         $sessionId = sanitize_text_field(wp_unslash($_GET['session_id'] ?? ''));
 
         echo '<div class="wicket-importer" data-screen="cheque-review">';
-        $this->renderBackLink();
 
         $this->renderPhase2Notice();
 
         if ($sessionId === '' || preg_match(self::SESSION_ID_PATTERN, $sessionId) !== 1) {
+            // Bare tab: the cheque queue (pending batches first). No back
+            // link here; the queue is the landing view.
             $this->renderEmptyState();
             echo '</div>';
 
             return;
         }
+
+        $this->renderBackLink();
 
         $plugin = Plugin::get_instance();
         $batch = $plugin->BatchProcessor()->getBatchBySession($sessionId);
@@ -125,7 +128,95 @@ final class ChequeReviewPage
 
     private function renderEmptyState(): void
     {
-        echo '<p>' . esc_html__('Select a cheque batch from Import History to review its Phase 1 results.', 'wicket-wp-importer') . '</p>';
+        /*
+         * No session picked: the tab doubles as the cheque queue. Pending
+         * batches (the actionable ones) float to the top; the rest read as
+         * history. Mirrors the Import History table columns so admins see one
+         * consistent shape across tabs.
+         */
+        global $wpdb;
+
+        $batchesTable = $wpdb->prefix . 'wicket_import_batches';
+        $perPage = 20;
+        $paged = max(1, (int) ($_GET['paged'] ?? 1));
+        $offset = ($paged - 1) * $perPage;
+
+        $total = (int) $wpdb->get_var("SELECT COUNT(*) FROM {$batchesTable} WHERE import_flow = 'cheque'");
+        $rows = $total > 0 ? $wpdb->get_results($wpdb->prepare(
+            "SELECT session_id, status, csv_filename, csv_row_count, phase1_succeeded, phase1_failed, phase1_needs_review, phase2_total, phase2_succeeded, created_at
+             FROM {$batchesTable}
+             WHERE import_flow = 'cheque'
+             ORDER BY (status = 'pending_review') DESC, (status = 'phase2_running') DESC, id DESC
+             LIMIT %d OFFSET %d",
+            $perPage,
+            $offset
+        )) : [];
+
+        echo '<h2>' . esc_html__('Cheque batches', 'wicket-wp-importer') . '</h2>';
+        echo '<p class="description">' . esc_html__('Open a batch to review its Phase 1 results and run payment matching.', 'wicket-wp-importer') . '</p>';
+
+        if ($rows === []) {
+            echo '<p>' . esc_html__('No cheque batches yet. Upload a cheque renewal CSV from the Upload tab to start one.', 'wicket-wp-importer') . '</p>';
+
+            return;
+        }
+
+        $baseUrl = admin_url('admin.php?page=wicket-wp-importer&tab=cheque-review');
+        ?>
+		<table class="wp-list-table widefat fixed striped wicket-importer-cheque-queue">
+			<thead>
+				<tr>
+					<th><?php esc_html_e('Started', 'wicket-wp-importer'); ?></th>
+					<th><?php esc_html_e('File', 'wicket-wp-importer'); ?></th>
+					<th><?php esc_html_e('Rows', 'wicket-wp-importer'); ?></th>
+					<th><?php esc_html_e('Progress', 'wicket-wp-importer'); ?></th>
+					<th><?php esc_html_e('Actions', 'wicket-wp-importer'); ?></th>
+				</tr>
+			</thead>
+			<tbody>
+				<?php foreach ($rows as $row) :
+                    $openUrl = $baseUrl . '&session_id=' . rawurlencode((string) $row->session_id);
+                    $progress = ImportAdminPage::progressLabel([
+                        'status'              => (string) $row->status,
+                        'phase1_succeeded'    => (int) $row->phase1_succeeded,
+                        'phase1_failed'       => (int) $row->phase1_failed,
+                        'phase1_needs_review' => (int) $row->phase1_needs_review,
+                        'phase2_total'        => (int) $row->phase2_total,
+                        'phase2_succeeded'    => (int) $row->phase2_succeeded,
+                    ]);
+                    ?>
+					<tr>
+					<td><?php echo esc_html(mysql2date('Y-m-d H:i', $row->created_at)); ?></td>
+					<td><a href="<?php echo esc_url($openUrl); ?>"><?php echo esc_html($row->csv_filename ?: '—'); ?></a></td>
+					<td><?php echo esc_html((string) ((int) $row->csv_row_count)); ?></td>
+					<td><?php echo esc_html($progress); ?></td>
+					<td>
+						<?php if ($row->status === 'pending_review') : ?>
+							<a class="button button-small button-primary" href="<?php echo esc_url($openUrl); ?>"><?php esc_html_e('Start Phase 2', 'wicket-wp-importer'); ?></a>
+						<?php else : ?>
+							<a class="button button-small" href="<?php echo esc_url($openUrl); ?>"><?php esc_html_e('Open review', 'wicket-wp-importer'); ?></a>
+						<?php endif; ?>
+					</td>
+				</tr>
+				<?php endforeach; ?>
+			</tbody>
+		</table>
+		<?php
+        $totalPages = (int) ceil($total / $perPage);
+        if ($totalPages > 1) {
+            $pagination = paginate_links([
+                'base'      => add_query_arg('paged', '%#%', $baseUrl),
+                'format'    => '',
+                'prev_text' => '&laquo;',
+                'next_text' => '&raquo;',
+                'total'     => $totalPages,
+                'current'   => $paged,
+                'type'      => 'plain',
+            ]);
+            if (is_string($pagination) && $pagination !== '') {
+                echo '<div class="wicket-importer-history-pagination tablenav"><div class="tablenav-pages">' . wp_kses_post($pagination) . '</div></div>';
+            }
+        }
     }
 
     private function renderSummary(array $summary, array $batch): void

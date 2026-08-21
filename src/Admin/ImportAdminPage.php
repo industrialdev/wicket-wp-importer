@@ -97,10 +97,20 @@ class ImportAdminPage
             })
             ->addTab('history', __('Import History', 'wicket-wp-importer'), function (): void {
                 $this->renderHistoryTab();
-            })
-            ->addTab('cheque-review', __('Cheque Review', 'wicket-wp-importer'), function (): void {
+            });
+
+        /*
+         * The Cheque Review tab is the lockbox workspace. Only sites that
+         * opted into payment matching (wicket_import_phase2_enabled, the same
+         * gate as the Import type selector) get it; member-only sites never
+         * see the empty cheque surface. Opened bare, the tab lists cheque
+         * batches (pending first) instead of a dead-end message.
+         */
+        if (ChequeReviewPage::isPhase2Available()) {
+            $page = $page->addTab('cheque-review', __('Cheque Review', 'wicket-wp-importer'), function (): void {
                 (new ChequeReviewPage())->render();
             });
+        }
 
         $page->register();
     }
