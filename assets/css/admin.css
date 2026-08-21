@@ -579,3 +579,9 @@
 .wicket-importer-history-table td.wicket-importer-history-actions-col .button {
 	margin-right: 4px;
 }
+
+/* Cheque review: breathing room between the Phase 1 summary table and the
+ * failed-rows section below it (WP tables default to no bottom margin). */
+.wicket-importer .wicket-importer-review-summary {
+	margin-bottom: 16px;
+}

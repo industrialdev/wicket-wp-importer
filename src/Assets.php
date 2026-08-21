@@ -44,12 +44,13 @@ class Assets
          * from browser cache — the new Upload-tab flow then half-loads (PHP
          * markup fresh, JS behaviors old). mtime changes with every edit.
          */
-        $assetVer = (string) filemtime(WICKET_IMPORT_PATH . 'assets/js/admin.js');
+        $jsVer = (string) filemtime(WICKET_IMPORT_PATH . 'assets/js/admin.js');
+        $cssVer = (string) filemtime(WICKET_IMPORT_PATH . 'assets/css/admin.css');
 
-        wp_register_style('wicket-import-admin', WICKET_IMPORT_URL . 'assets/css/admin.css', [], $assetVer ?: WICKET_IMPORT_VERSION);
+        wp_register_style('wicket-import-admin', WICKET_IMPORT_URL . 'assets/css/admin.css', [], $cssVer ?: WICKET_IMPORT_VERSION);
         // wp-i18n provides wp.i18n.__ / sprintf / _n for admin.js strings (Task 8 S3):
         // the prior hand-rolled {n}/{max} placeholders were a translator hazard.
-        wp_register_script('wicket-import-admin', WICKET_IMPORT_URL . 'assets/js/admin.js', ['wp-i18n'], $assetVer ?: WICKET_IMPORT_VERSION, true);
+        wp_register_script('wicket-import-admin', WICKET_IMPORT_URL . 'assets/js/admin.js', ['wp-i18n'], $jsVer ?: WICKET_IMPORT_VERSION, true);
 
         wp_enqueue_style('wicket-import-admin');
 
