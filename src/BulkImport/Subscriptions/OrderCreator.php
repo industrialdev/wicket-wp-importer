@@ -55,6 +55,30 @@ class OrderCreator
             $resolved
         );
 
+        /*
+         * D3: a member with an existing On Hold order already awaits payment
+         * matching. A second order for the same member would fork the lockbox
+         * match, so the row skips with an error for a human to reconcile.
+         * Covers previous-run leftovers AND duplicates inside the same run
+         * (row N creates the order; row N+k for the same member skips).
+         */
+        if ($userId > 0 && function_exists('wc_get_orders')) {
+            $existing = wc_get_orders([
+                'customer_id' => $userId,
+                'status'      => ['on-hold'],
+                'limit'       => 1,
+                'return'      => 'objects',
+            ]);
+            if (is_array($existing) && $existing !== []) {
+                $hold = $existing[0];
+
+                return OrderResult::failed(sprintf(
+                    'Existing On Hold order #%d for this member; row skipped so payment matching stays unique.',
+                    (int) $hold->get_id()
+                ));
+            }
+        }
+
         $order = wc_create_order();
         if (is_wp_error($order)) {
             return OrderResult::failed('Could not create the order: ' . $order->get_error_message());
