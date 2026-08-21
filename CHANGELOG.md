@@ -5,6 +5,12 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 <!-- new releases inserted below this line -->
 
+## [1.0.31] - 2026-08-21
+
+### Added
+- **importer:** gate Cheque Review tab, bare tab becomes cheque queue
+
+
 ## [1.0.30] - 2026-08-21
 
 ### Fixed
