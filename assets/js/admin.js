@@ -299,12 +299,40 @@
 		}
 
 		// --- upload confirm (8.2) ---------------------------------------
+		// Import type (member vs cheque/lockbox, spec Story 1). The radios render
+		// only when the site enables the cheque flow; absent radios = member.
+		function getImportType() {
+			var checked = document.querySelector('input[name="wicket_import_import_type"]:checked');
+			return checked ? checked.value : 'member';
+		}
+
+		// Cheque uploads are CSV-only: hide the member-only upload-type toggle
+		// (CSV / Manual Entry) while cheque is selected, restore it on member.
+		function bindImportTypeToggle() {
+			var radios = document.querySelectorAll('input[name="wicket_import_import_type"]');
+			if (!radios.length) { return; }
+			var uploadType = document.querySelector('.wicket-importer-upload-type');
+			function sync() {
+				var isCheque = getImportType() === 'cheque';
+				if (!uploadType) { return; }
+				uploadType.hidden = isCheque;
+				if (isCheque) {
+					var csvRadio = uploadType.querySelector('input[value="csv"]');
+					if (csvRadio) { csvRadio.checked = true; }
+				}
+			}
+			radios.forEach(function(r) { r.addEventListener('change', sync); });
+			sync();
+		}
+		bindImportTypeToggle();
+
 		if (uploadBtn) {
 			uploadBtn.addEventListener('click', function() {
 				if (!selectedFile) {
 					return;
 				}
-				var url = uploadBtn.dataset.uploadUrl;
+				var isCheque = getImportType() === 'cheque' && !!uploadBtn.dataset.chequeUploadUrl;
+				var url = isCheque ? uploadBtn.dataset.chequeUploadUrl : uploadBtn.dataset.uploadUrl;
 				var validationUrl = uploadBtn.dataset.validationUrl;
 
 				setBusy(true);
@@ -327,8 +355,10 @@
 					.then(toJson)
 					.then(function(result) {
 						if (result && result.session_id) {
-							// Redirect to the validation screen with the new session.
-							window.location.href = validationUrl + '&session_id=' + encodeURIComponent(result.session_id);
+							// Redirect to the validation screen with the new session; a
+							// cheque pass stays on its flow (?flow=cheque) so the wizard
+							// renders the cheque run button and redirect.
+							window.location.href = validationUrl + '&session_id=' + encodeURIComponent(result.session_id) + (isCheque ? '&flow=cheque' : '');
 							return;
 						}
 						throw new Error(extractErrorMessage(result) || t('Upload failed. Please try again.'));
@@ -388,7 +418,10 @@
 					if (result && result.session_id) {
 						// S5: confirmationUrl is always localized by Assets.php;
 						// no silent relative-path fallback (fail visibly if absent).
-						window.location.href = cfg.confirmationUrl + '&session_id=' + encodeURIComponent(sessionId);
+						// Cheque runs (data-redirect) land on the Cheque Review tab
+						// instead: the run is async on Action Scheduler.
+						window.location.href = btn.dataset.redirect
+							|| (cfg.confirmationUrl + '&session_id=' + encodeURIComponent(sessionId));
 						return;
 					}
 					throw new Error(extractErrorMessage(result) || t('Import run failed. See the error below.'));

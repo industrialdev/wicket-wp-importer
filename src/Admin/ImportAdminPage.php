@@ -122,11 +122,11 @@ class ImportAdminPage
         $this->renderScreenNotices();
 
         if (self::SCREEN_VALIDATION === $screen) {
-            $this->renderValidationScreen($sessionId);
+            $this->renderValidationScreen($sessionId, $this->currentFlow());
         } elseif (self::SCREEN_CONFIRMATION === $screen) {
             $this->renderConfirmationScreen($sessionId);
         } else {
-            $this->renderUploadScreen();
+            $this->renderUploadScreen($this->currentFlow());
         }
 
         echo '</div>';
@@ -164,7 +164,7 @@ class ImportAdminPage
      * The toggle is client-side show/hide (no page reload); admin.js binds it.
      * Default visible section is CSV.
      */
-    private function renderUploadScreen(): void
+    private function renderUploadScreen(string $flow = ''): void
     {
         /*
          * Manual (individual) entry mode. Defaults on for backwards
@@ -174,6 +174,16 @@ class ImportAdminPage
          * stays visible with no dead binding.
          */
         $manualEnabled = (bool) apply_filters('wicket_import_manual_entry_enabled', true);
+
+        /*
+         * Cheque/lockbox import type (spec Story 1: "upload a CSV through the
+         * admin UI to initiate bulk order creation"). Rendered only when the
+         * site answers wicket_import_phase2_enabled — the same client opt-in
+         * the payment-matching flow uses — so member-only sites never see it.
+         * The radio switches the upload endpoint (member /upload vs cheque
+         * /cheque/upload) and keeps the wizard on the cheque flow (?flow=cheque).
+         */
+        $chequeAvailable = ChequeReviewPage::isPhase2Available();
 
         /*
          * Stuck-session escape hatch. When a prior upload left pending rows
@@ -216,6 +226,21 @@ class ImportAdminPage
 				<span><?php esc_html_e('Manual Entry', 'wicket-wp-importer'); ?></span>
 			</label>
 		</div>
+		<?php endif; ?>
+
+		<?php if ($chequeAvailable): ?>
+		<fieldset class="wicket-importer-import-type wicket-importer-delimiter">
+			<legend><?php esc_html_e('Import type', 'wicket-wp-importer'); ?></legend>
+			<label class="wicket-importer-toggle">
+				<input type="radio" name="wicket_import_import_type" value="member" <?php checked($flow !== 'cheque'); ?>>
+				<span><?php esc_html_e('Member import', 'wicket-wp-importer'); ?></span>
+			</label>
+			<label class="wicket-importer-toggle">
+				<input type="radio" name="wicket_import_import_type" value="cheque" <?php checked($flow, 'cheque'); ?>>
+				<span><?php esc_html_e('Cheque renewals (lockbox)', 'wicket-wp-importer'); ?></span>
+			</label>
+			<p class="description"><?php esc_html_e('Cheque renewals stage On Hold orders in bulk and match the lockbox payment file afterwards.', 'wicket-wp-importer'); ?></p>
+		</fieldset>
 		<?php endif; ?>
 
 		<div id="wicket-import-csv" class="wicket-importer-upload-section">
@@ -277,6 +302,9 @@ class ImportAdminPage
 					type="button"
 					class="button button-primary wicket-importer-upload-btn"
 					data-upload-url="<?php echo esc_url($rest . '/upload'); ?>"
+					<?php if ($chequeAvailable): ?>
+					data-cheque-upload-url="<?php echo esc_url($rest . '/cheque/upload'); ?>"
+					<?php endif; ?>
 					data-validation-url="<?php echo esc_url($this->validationScreenUrl()); ?>"
 				>
 					<?php esc_html_e('Validate & Upload', 'wicket-wp-importer'); ?>
@@ -316,9 +344,13 @@ class ImportAdminPage
      * data-session-id + data-run-url / data-clear-url attributes so Task 8's
      * admin.js can bind without re-deriving the endpoints.
      */
-    private function renderValidationScreen(?string $sessionId): void
+    private function renderValidationScreen(?string $sessionId, string $flow = ''): void
     {
         $rest = $this->restBase();
+        // Cheque/lockbox wizard pass: the run button targets the cheque
+        // bulk-create endpoint (Action Scheduler) and lands on the Cheque
+        // Review tab instead of the inline member confirmation screen.
+        $isCheque = $flow === 'cheque';
 
         // No session: bounce to upload. The JS flow always passes a session_id,
         // but a direct hit / stale link should not render an empty screen.
@@ -386,13 +418,22 @@ class ImportAdminPage
         ?>
 
 			<div class="wicket-importer-actions">
+				<?php if ($isCheque): ?>
+				<p class="description"><?php esc_html_e('The cheque import runs in the background (Action Scheduler). Watch its progress in Import History, then review it under Cheque Review.', 'wicket-wp-importer'); ?></p>
+				<?php endif; ?>
 				<button
 					type="button"
 					class="button button-primary wicket-importer-proceed"
 					data-session-id="<?php echo esc_attr($sessionId); ?>"
-					data-run-url="<?php echo esc_url($rest . '/session/' . $sessionId . '/run'); ?>"
+					data-run-url="<?php echo esc_url($rest . ($isCheque ? '/cheque/session/' : '/session/') . $sessionId . '/run'); ?>"
+					<?php if ($isCheque): ?>
+					data-redirect="<?php echo esc_url(admin_url('admin.php?page=wicket-wp-importer&tab=cheque-review&session_id=' . rawurlencode($sessionId))); ?>"
+					<?php endif; ?>
 				>
-					<?php esc_html_e('Proceed with Valid Rows', 'wicket-wp-importer'); ?>
+					<?php echo esc_html($isCheque
+					? __('Start Cheque Import', 'wicket-wp-importer')
+					: __('Proceed with Valid Rows', 'wicket-wp-importer'));
+        ?>
 				</button>
 				<button
 					type="button"
@@ -1650,6 +1691,20 @@ class ImportAdminPage
         $screen = isset($_GET['screen']) ? sanitize_key(wp_unslash($_GET['screen'])) : '';
 
         return in_array($screen, self::ALLOWED_SCREENS, true) ? $screen : self::SCREEN_UPLOAD;
+    }
+
+    /**
+     * Current flow from $_GET['flow']: 'cheque' when the wizard pass is a
+     * cheque/lockbox upload, '' for the member flow. Presentational only:
+     * it picks run-endpoint URL, button labels, and redirects on the wizard
+     * screens. The REST endpoints stay the authority for what a session can
+     * do (the upload endpoint already validates each flow's column contract).
+     */
+    private function currentFlow(): string
+    {
+        $flow = isset($_GET['flow']) ? sanitize_key(wp_unslash($_GET['flow'])) : '';
+
+        return $flow === 'cheque' ? 'cheque' : '';
     }
 
     /**
