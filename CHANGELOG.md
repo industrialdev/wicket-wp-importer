@@ -5,6 +5,16 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 <!-- new releases inserted below this line -->
 
+## [1.0.28] - 2026-08-21
+
+### Added
+- **importer:** cheque upload UI on the Upload tab (lockbox Story 1)
+
+### Documentation
+- **importer:** correct stale stub docblocks in ChequeReviewPage
+- add PR description template #norelease
+
+
 ## [1.0.27] - 2026-08-20
 
 ### Added

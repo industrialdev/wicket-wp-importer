@@ -1,6 +1,6 @@
 {
   "name": "industrialdev/wicket-wp-importer",
-  "version": "1.0.27",
+  "version": "1.0.28",
   "description": "Wicket Importer plugin for bulk membership import and payment processing",
   "type": "wordpress-plugin",
   "license": "GPL-2.0-or-later",
