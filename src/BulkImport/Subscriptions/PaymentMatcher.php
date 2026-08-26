@@ -27,6 +27,11 @@ use WicketImporter\Services\Logger;
 final class PaymentMatcher
 {
     /**
+     * Why the last resolveMatch() call returned null (per-row reason for the
+     * error log / review table). Null while a match is live or was found.
+     */
+    public ?string $lastFailure = null;
+    /**
      * On a unique match, transition the order + activate subscriptions + fire
      * the renewal-membership action. Returns ['order_id', 'subscription_ids'].
      *
@@ -39,10 +44,27 @@ final class PaymentMatcher
         $orderId = (int) $order->get_id();
         $matched = [];
 
-        // On Hold -> Processing + internal note. add_order_note('', false) is
-        // an internal/customer-not-notified note per spec Story 10.
-        $order->update_status('processing', sprintf('Payment received - Cheque #%s', (string) ($row['check_id'] ?? '')));
-        $order->save();
+        // Customer emails are OFF by default during import matches (WWID-2318
+        // decision 2026-08-27): a bulk lockbox run would email every matched
+        // member a "Processing order" notice that means nothing to them. A
+        // client opts in from its child theme with
+        // add_filter('wicket_import_send_customer_emails', '__return_true').
+        // Scoped with try/finally so a throw mid-transition cannot leave the
+        // suppression attached for the rest of the request.
+        $sendEmails = (bool) apply_filters('wicket_import_send_customer_emails', false);
+        if (!$sendEmails) {
+            \add_filter('woocommerce_email_enabled_customer_processing_order', [self::class, 'suppressCustomerProcessingEmail']);
+        }
+        try {
+            // On Hold -> Processing + internal note. add_order_note('', false) is
+            // an internal/customer-not-notified note per spec Story 10.
+            $order->update_status('processing', sprintf('Payment received - Cheque #%s', (string) ($row['check_id'] ?? '')));
+            $order->save();
+        } finally {
+            if (!$sendEmails) {
+                \remove_filter('woocommerce_email_enabled_customer_processing_order', [self::class, 'suppressCustomerProcessingEmail']);
+            }
+        }
 
         // Activate every subscription attached to the order (membership +
         // section, when present). WCS exposes a getSubscriptions helper that
@@ -108,11 +130,24 @@ final class PaymentMatcher
      *
      * @return object|null The unique matched WC_Order, or null when none / ambiguous.
      */
+    /**
+     * Force-disable the WC customer "Processing order" email while a matched
+     * payment transitions an order. Callback for the
+     * woocommerce_email_enabled_customer_processing_order filter.
+     */
+    public static function suppressCustomerProcessingEmail(): bool
+    {
+        return false;
+    }
+
     public function resolveMatch(array $row, string $batchId = '', ?Logger $logger = null): ?object
     {
+        $this->lastFailure = null;
         $barId = trim((string) ($row['bar_id'] ?? ''));
         $csvTotal = (float) ($row['order_total'] ?? 0);
         if ($barId === '' || $csvTotal <= 0) {
+            $this->lastFailure = 'Invalid payment row: a Bar ID and a positive payment total are required.';
+
             return null;
         }
 
@@ -125,6 +160,8 @@ final class PaymentMatcher
             $batchId
         )));
         if ($orderIds === []) {
+            $this->lastFailure = self::reasonFor($row, 0, false);
+
             return null;
         }
 
@@ -136,12 +173,32 @@ final class PaymentMatcher
             }
         }
         if ($orders === []) {
+            $this->lastFailure = self::reasonFor($row, 0, false);
+
             return null;
         }
 
-        // Single candidate -> matched.
+        /*
+         * Single candidate: the acceptance match is "On Hold order found for
+         * the Bar ID AND the payment amount equals the order total" (WWID-2318).
+         * Returning the only candidate without comparing totals let a $40
+         * cheque process a $350 order (WWID-2318 UAT follow-up, 2026-08-27),
+         * so the amount gate applies to the single-candidate path too.
+         */
         if (count($orders) === 1) {
-            return $orders[0];
+            $candidate = $orders[0];
+            if (abs((float) $candidate->get_total() - $csvTotal) >= 0.01) {
+                $this->lastFailure = sprintf(
+                    'On Hold order #%d found for this Bar ID but the payment total %.2F does not equal the order total %.2F.',
+                    (int) $candidate->get_id(),
+                    $csvTotal,
+                    (float) $candidate->get_total()
+                );
+
+                return null;
+            }
+
+            return $candidate;
         }
 
         // Multiple -> filter by total (tolerance 0.01).
@@ -153,6 +210,7 @@ final class PaymentMatcher
             return $byAmount[0];
         }
 
+        $this->lastFailure = self::reasonFor($row, count($orders), true);
         $logger?->warning('Ambiguous payment match; manual resolution required.', [
             'bar_id' => $barId,
             'csv_total' => $csvTotal,

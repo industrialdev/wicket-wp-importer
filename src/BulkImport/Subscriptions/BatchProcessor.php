@@ -545,7 +545,7 @@ final class BatchProcessor
                     $staging->updateImportResult(
                         $stagingId,
                         'failed',
-                        PaymentMatcher::reasonFor($data, 0, false)
+                        $matcher->lastFailure ?? PaymentMatcher::reasonFor($data, 0, false)
                     );
                     continue;
                 }
