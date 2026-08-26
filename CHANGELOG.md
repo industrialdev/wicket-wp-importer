@@ -5,6 +5,12 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 <!-- new releases inserted below this line -->
 
+## [1.0.38] - 2026-08-26
+
+### Fixed
+- **import:** report subscription ids and extension columns in results CSV
+
+
 ## [1.0.37] - 2026-08-26
 
 ### Fixed
