@@ -5,6 +5,12 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 <!-- new releases inserted below this line -->
 
+## [1.0.34] - 2026-08-26
+
+### Fixed
+- **importer:** make mappings seeding self-healing, not drift-bound
+
+
 ## [1.0.33] - 2026-08-26
 
 ### Fixed
