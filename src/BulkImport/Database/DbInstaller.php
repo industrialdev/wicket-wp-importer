@@ -23,7 +23,6 @@ class DbInstaller
         $installed_version = get_option(self::DB_VERSION_OPTION);
         if ($installed_version !== WICKET_IMPORT_DB_VERSION) {
             self::createTables();
-            self::seedDefaultMappings();
             update_option(self::DB_VERSION_OPTION, WICKET_IMPORT_DB_VERSION);
             // Backfill the session-expiry cron on upgrade so installs activated
             // before Task 38.3 land the schedule without a manual re-activation
@@ -39,6 +38,17 @@ class DbInstaller
                 ], 5 * MINUTE_IN_SECONDS);
             }
         }
+
+        /*
+         * Data-state seeding, decoupled from schema drift (WWID-2323
+         * follow-up). Seeding previously ran ONLY inside the version-drift
+         * branch, so an option deleted on purpose (the documented recovery:
+         * "delete the option, reload admin") was never reseeded until the
+         * next plugin version bump. seedDefaultMappings() is idempotent and
+         * self-healing (it exits fast when any bucket carries entries), so it
+         * is safe to run on every admin/CLI request: one option read.
+         */
+        self::seedDefaultMappings();
     }
 
     /**
@@ -202,11 +212,24 @@ class DbInstaller
      * the child theme) supplies its late-fee/discount/section table through the
      * wicket_import_default_mappings filter, keyed by SKU so it carries zero
      * environment-specific product IDs (D-LOCKBOX-1: resolve IDs at runtime).
+     *
+     * Needs seeding when the option is absent, not an array, or holds no
+     * mapping entries in ANY bucket. That last case is load-bearing: an
+     * all-empty option (written before the client's filter could answer, or
+     * by an early seed with no client defaults) previously satisfied the
+     * "option exists" guard and blocked seeding FOREVER, so sections and late
+     * fees silently resolved to nothing (OBA staging incident, 2026-08-26).
+     *
+     * Semantics of the reseed: an option with entries in any bucket is real
+     * data (client seed or admin edits through Mapping Settings) and is never
+     * overwritten. Only the no-entries state heals, which also means an admin
+     * who deletes EVERY entry gets the client defaults back on the next seed
+     * run ("reset to defaults" behavior); per-entry deletions are preserved.
      */
     public static function seedDefaultMappings(): void
     {
         $existing = get_option(self::MAPPINGS_OPTION);
-        if (is_array($existing) && $existing !== []) {
+        if (is_array($existing) && self::mappingsCarryEntries($existing)) {
             return;
         }
 
@@ -233,5 +256,20 @@ class DbInstaller
         }
 
         update_option(self::MAPPINGS_OPTION, $defaults, false);
+    }
+
+    /**
+     * Does the option hold at least one mapping entry in any bucket? Buckets
+     * that are missing or not arrays count as empty; only real entries count.
+     */
+    private static function mappingsCarryEntries(array $mappings): bool
+    {
+        foreach (['late_fees', 'discounts', 'sections'] as $bucket) {
+            if (isset($mappings[$bucket]) && is_array($mappings[$bucket]) && $mappings[$bucket] !== []) {
+                return true;
+            }
+        }
+
+        return false;
     }
 }
