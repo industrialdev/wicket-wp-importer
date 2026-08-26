@@ -31,6 +31,9 @@ final class ReviewSuggester
         if ($reason !== '' && stripos($reason, 'diverg') !== false) {
             return __('Correct the order total in the source CSV, then re-upload the batch.', 'wicket-wp-importer');
         }
+        if ($reason !== '' && stripos($reason, 'no member or membership') !== false) {
+            return __('Verify the member identifier exists on this site and the member has an active membership.', 'wicket-wp-importer');
+        }
         if ($reason !== '' && stripos($reason, 'product resolution') !== false) {
             return __('Check the tier succession map and the product mappings.', 'wicket-wp-importer');
         }

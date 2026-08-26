@@ -45,6 +45,13 @@ class ProductResolver
      */
     public function resolve(int $membershipPostId, array $sectionSlugs, float $csvTotal): ResolvedProducts
     {
+        // Honesty guard: with no membership post, every meta read below returns
+        // empty and a caller-side member-resolution failure would masquerade as
+        // a tier-map miss. Keep the tier error meaning what it says.
+        if ($membershipPostId <= 0) {
+            return ResolvedProducts::error('No membership post supplied for this row.');
+        }
+
         $membershipProductId = $this->resolveMembershipProduct($membershipPostId);
         if ($membershipProductId === 0) {
             return ResolvedProducts::error('No renewal product resolved for the member tier.');

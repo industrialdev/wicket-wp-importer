@@ -55,6 +55,15 @@ class OrderCreator
             $resolved
         );
 
+        // A row that resolves no WC customer must never become a guest On Hold
+        // order: payment matching (Phase 2) keys on the member's user, and the
+        // D3 duplicate check below only runs for a known customer. Live for any
+        // client whose membership seam resolves while the customer seam does
+        // not (peer review 2026-08-26).
+        if ($userId <= 0) {
+            return OrderResult::failed('Could not resolve a WooCommerce customer for this row.');
+        }
+
         /*
          * D3: a member with an existing bulk-created On Hold order already
          * awaits payment matching. A second order for the same member would

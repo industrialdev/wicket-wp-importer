@@ -66,6 +66,19 @@ final class ChequeRowProcessor implements RowProcessor
         do_action('wicket_import_sync_member_roles', $memberData);
 
         $membershipPostId = (int) apply_filters('wicket_import_resolve_membership_post', 0, $memberData);
+        // Fail fast with an honest message when the seam resolves no membership
+        // post. Passing 0 on would surface downstream as a misleading tier /
+        // product error (WWID-2317 UAT: an unknown member identifier reported
+        // as "No renewal product resolved for the member tier"). Covers both
+        // seam failure modes: the identifier matches no member, or the member
+        // has no active membership to renew (spec Story 3). Client-agnostic
+        // wording; core never names the client's identifier (AD1).
+        if ($membershipPostId <= 0) {
+            return RowResult::failed(
+                'No member or membership resolved for this row: the identifier is unknown on this site, '
+                . 'or the member has no active membership to renew.'
+            );
+        }
         // Populate the (otherwise dead) tierPostId field so downstream logs and
         // any future consumers see the real value, not a misleading zero.
         $memberData = new MemberData(
