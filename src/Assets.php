@@ -30,13 +30,6 @@ class Assets
      */
     public function enqueue_admin_assets(string $hook): void
     {
-        // Only enqueue on Importer pages. The hook suffix for our submenu is
-        // 'wicket-settings_page_wicket-wp-importer'; the substring check is
-        // robust against the parent-slug prefix.
-        if (!str_contains($hook, 'wicket-wp-importer')) {
-            return;
-        }
-
         /*
          * Cache-bust by file mtime, not the plugin version: the admin JS/CSS
          * can change between releases (branch builds, hotfixes synced to a
@@ -48,6 +41,24 @@ class Assets
         $cssVer = (string) filemtime(WICKET_IMPORT_PATH . 'assets/css/admin.css');
 
         wp_register_style('wicket-import-admin', WICKET_IMPORT_URL . 'assets/css/admin.css', [], $cssVer ?: WICKET_IMPORT_VERSION);
+
+        /*
+         * Two screens load the stylesheet: Importer pages (full bundle) and
+         * the WooCommerce order edit screen, where admin.css carries the
+         * Story 13 Batch ID field's tooltip-alignment rules (WWID-2349).
+         * JS (and the REST config below) stays on Importer pages only.
+         */
+        $isImporterPage = str_contains($hook, 'wicket-wp-importer');
+        if (!$isImporterPage && !self::isOrderEditScreen($hook)) {
+            return;
+        }
+
+        wp_enqueue_style('wicket-import-admin');
+
+        if (!$isImporterPage) {
+            return;
+        }
+
         // wp-i18n provides wp.i18n.__ / sprintf / _n for admin.js strings (Task 8 S3):
         // the prior hand-rolled {n}/{max} placeholders were a translator hazard.
         wp_register_script('wicket-import-admin', WICKET_IMPORT_URL . 'assets/js/admin.js', ['wp-i18n'], $jsVer ?: WICKET_IMPORT_VERSION, true);
@@ -80,5 +91,27 @@ class Assets
         ]);
 
         wp_enqueue_script('wicket-import-admin');
+    }
+
+    /**
+     * Is this a WooCommerce order edit screen? Covers both storage models:
+     * HPOS (admin.php?page=wc-orders, hook suffix 'woocommerce_page_wc-orders')
+     * and the classic post screen ('post.php' / 'post-new.php' on shop_order).
+     *
+     * @param string $hook The current admin page hook suffix.
+     */
+    private static function isOrderEditScreen(string $hook): bool
+    {
+        if ($hook === 'woocommerce_page_wc-orders') {
+            return isset($_GET['action']) && $_GET['action'] === 'edit';
+        }
+
+        if ($hook === 'post.php' || $hook === 'post-new.php') {
+            $postId = isset($_GET['post']) ? absint($_GET['post']) : 0;
+
+            return $postId > 0 && get_post_type($postId) === 'shop_order';
+        }
+
+        return false;
     }
 }

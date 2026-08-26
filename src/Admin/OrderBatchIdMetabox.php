@@ -42,6 +42,17 @@ final class OrderBatchIdMetabox
     {
         $value = (string) $order->get_meta(self::META_KEY);
 
+        /*
+         * The after_order_details hook fires INSIDE the General order column,
+         * not as a sibling of the three data columns, so this must stay a
+         * plain block field — NOT an order_data_column (a floated 1/3-width
+         * column nested inside General squeezes against whatever follows).
+         * admin.css makes the wrapper a flow-root block that contains the
+         * floated form field and puts the help tip on the label's line: the
+         * memberships plugin renders its floated "Wicket Membership"
+         * order_data_column right after this field, and without the containment
+         * the two jam together with no padding (WWID-2349).
+         */
         echo '<div class="order-batch-id-field">';
         woocommerce_wp_text_input([
             'id' => self::META_KEY,

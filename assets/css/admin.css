@@ -585,3 +585,39 @@
 .wicket-importer .wicket-importer-review-summary {
 	margin-bottom: 16px;
 }
+
+/* ---- Order edit screen: Batch ID field (Story 13, WWID-2349) --------- */
+
+/*
+ * The after_order_details hook fires inside the General order column, and
+ * WooCommerce floats every p.form-field there. The memberships plugin renders
+ * its floated "Wicket Membership" order_data_column right after this field,
+ * so two floats meet: the membership block slides up beside the Batch ID
+ * input with no padding (WWID-2349, order with a membership link).
+ * display: flow-root turns the wrapper into a block formatting context that
+ * contains its own floated p and spans the full column width, so the later
+ * float starts on a fresh line below this field. clear is kept for any float
+ * that precedes the field.
+ */
+.order_data_column .order-batch-id-field,
+#woocommerce-order-data .order-batch-id-field {
+	display: flow-root;
+	clear: both;
+}
+
+/*
+ * The help tip belongs beside the label, not below it. On the order edit
+ * screen WooCommerce renders these labels block-level, which drops the tip
+ * icon onto the input's row; inline-block puts "Batch ID [?]" on one line,
+ * matching the tooltip placement on product screens. The ID selector beats
+ * any single-class rule WooCommerce ships for the same element.
+ */
+#woocommerce-order-data .order-batch-id-field label,
+.order_data_column .order-batch-id-field label {
+	display: inline-block;
+}
+
+/* Breathing room between the tip and any following inline content. */
+.order-batch-id-field .woocommerce-help-tip {
+	margin-left: 4px;
+}
