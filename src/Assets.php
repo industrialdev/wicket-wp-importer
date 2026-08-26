@@ -31,39 +31,36 @@ class Assets
     public function enqueue_admin_assets(string $hook): void
     {
         /*
-         * Cache-bust by file mtime, not the plugin version: the admin JS/CSS
-         * can change between releases (branch builds, hotfixes synced to a
-         * client), and a same-version asset URL keeps serving the stale file
-         * from browser cache — the new Upload-tab flow then half-loads (PHP
-         * markup fresh, JS behaviors old). mtime changes with every edit.
-         */
-        $jsVer = (string) filemtime(WICKET_IMPORT_PATH . 'assets/js/admin.js');
-        $cssVer = (string) filemtime(WICKET_IMPORT_PATH . 'assets/css/admin.css');
-
-        wp_register_style('wicket-import-admin', WICKET_IMPORT_URL . 'assets/css/admin.css', [], $cssVer ?: WICKET_IMPORT_VERSION);
-
-        /*
-         * Two screens load the stylesheet: Importer pages (full bundle) and
+         * Two screens load admin assets: Importer pages (full bundle) and
          * the WooCommerce order edit screen, where admin.css carries the
-         * Story 13 Batch ID field's tooltip-alignment rules (WWID-2349).
-         * JS (and the REST config below) stays on Importer pages only.
+         * Story 13 Batch ID field's formatting rules (WWID-2349). JS (and
+         * the REST config below) stays on Importer pages only. The gate runs
+         * before any filemtime() call so unrelated admin pages pay nothing.
          */
         $isImporterPage = str_contains($hook, 'wicket-wp-importer');
         if (!$isImporterPage && !self::isOrderEditScreen($hook)) {
             return;
         }
 
+        /*
+         * Cache-bust by file mtime, not the plugin version: the admin JS/CSS
+         * can change between releases (branch builds, hotfixes synced to a
+         * client), and a same-version asset URL keeps serving the stale file
+         * from browser cache — the new Upload-tab flow then half-loads (PHP
+         * markup fresh, JS behaviors old). mtime changes with every edit.
+         */
+        $cssVer = (string) filemtime(WICKET_IMPORT_PATH . 'assets/css/admin.css');
+        wp_register_style('wicket-import-admin', WICKET_IMPORT_URL . 'assets/css/admin.css', [], $cssVer ?: WICKET_IMPORT_VERSION);
         wp_enqueue_style('wicket-import-admin');
 
         if (!$isImporterPage) {
             return;
         }
 
+        $jsVer = (string) filemtime(WICKET_IMPORT_PATH . 'assets/js/admin.js');
         // wp-i18n provides wp.i18n.__ / sprintf / _n for admin.js strings (Task 8 S3):
         // the prior hand-rolled {n}/{max} placeholders were a translator hazard.
         wp_register_script('wicket-import-admin', WICKET_IMPORT_URL . 'assets/js/admin.js', ['wp-i18n'], $jsVer ?: WICKET_IMPORT_VERSION, true);
-
-        wp_enqueue_style('wicket-import-admin');
 
         // Load JS translations for admin.js (wp.i18n.__ with the plugin text domain).
         // Falls back to the English in the source when no .json is shipped yet.
@@ -103,7 +100,11 @@ class Assets
     private static function isOrderEditScreen(string $hook): bool
     {
         if ($hook === 'woocommerce_page_wc-orders') {
-            return isset($_GET['action']) && $_GET['action'] === 'edit';
+            // Edit AND Add-new render the same order-data panel (the Story 13
+            // Batch ID field mounts on both); the list screen has no action.
+            $action = isset($_GET['action']) ? sanitize_key(wp_unslash($_GET['action'])) : '';
+
+            return in_array($action, ['edit', 'new'], true);
         }
 
         if ($hook === 'post.php' || $hook === 'post-new.php') {
