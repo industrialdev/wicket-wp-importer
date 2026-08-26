@@ -127,7 +127,9 @@ final class ChequeRowProcessor implements RowProcessor
             );
         }
 
-        return RowResult::imported($orderId);
+        // Report the created subscriptions so the results CSV's "Subscription
+        // IDs" column carries them (WWID-2350).
+        return RowResult::imported($orderId, null, $sub->subscriptionIds);
     }
 
     /**

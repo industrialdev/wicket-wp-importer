@@ -1141,7 +1141,27 @@ final class UploadController
     private function buildResultsCsv(array $rows): array
     {
         $dataKeys = ColumnOrder::forRows($rows);
-        $headers = array_merge(['Line'], $dataKeys, ['Import Status', 'Message', 'MDP UUID', 'Order ID', 'Subscription IDs']);
+
+        /*
+         * Extension columns use the same contract as the on-screen results
+         * table (wicket_import_confirmation_columns, AD13): each entry is
+         * ['label' => string, 'extractor' => fn(array $row): mixed]. The
+         * extractor receives the SAME shaped row as the table (shapeResultRow:
+         * raw_data + extension_metadata decoded, statuses, ids), so OBA's Bar
+         * ID / tier / View-in-MDP columns render identically in the CSV
+         * (WWID-2350). Columns append AFTER the fixed tail so existing header
+         * positions never shift for consumers of prior exports.
+         */
+        $extColumns = apply_filters('wicket_import_confirmation_columns', []);
+        $extColumns = is_array($extColumns) ? $extColumns : [];
+        $extColumns = array_values(array_filter($extColumns, static fn ($col) => is_array($col) && ! empty($col['label'])));
+
+        $headers = array_merge(
+            ['Line'],
+            $dataKeys,
+            ['Import Status', 'Message', 'MDP UUID', 'Order ID', 'Subscription IDs'],
+            array_map(static fn (array $col) => (string) $col['label'], $extColumns)
+        );
 
         $out = [];
         foreach ($rows as $row) {
@@ -1173,6 +1193,19 @@ final class UploadController
             $line[] = (string) ($row['mdp_uuid'] ?? '');
             $line[] = ($orderId !== null && $orderId !== '') ? (string) $orderId : '';
             $line[] = implode(', ', Json::decodeArray($row['subscription_ids'] ?? null));
+
+            // Extension cells: guarded like the table's extractors — a throwing
+            // extractor yields an empty cell, never a broken export.
+            $shaped = $this->shapeResultRow($row);
+            foreach ($extColumns as $col) {
+                $value = '';
+                try {
+                    $value = (string) ($col['extractor']($shaped) ?? '');
+                } catch (\Throwable $e) {
+                    // Swallow: the fixed columns above are already complete.
+                }
+                $line[] = $value;
+            }
 
             $out[] = $line;
         }

@@ -378,6 +378,25 @@ class ImportStagingTable
     }
 
     /**
+     * Write the created WC subscription IDs onto a staged row so the results
+     * CSV and the REST /results endpoint can report them (WWID-2350). Both
+     * flows land here: the inline member path (InlineSubscriptionCreator) and
+     * the cheque path (BatchProcessor via RowResult). Empty list clears the
+     * column; IDs are stored as a JSON array like the cheque match path does.
+     *
+     * @param list<int> $subscriptionIds
+     */
+    public function updateSubscriptionIds(int $id, array $subscriptionIds): void
+    {
+        global $wpdb;
+        $wpdb->update(
+            $this->table_name,
+            ['subscription_ids' => wp_json_encode(array_values(array_map('intval', $subscriptionIds)))],
+            ['id' => $id]
+        );
+    }
+
+    /**
      * Update validation result for a single row.
      */
     public function updateValidationResult(int $id, string $validation_status, ?string $validation_message = null, ?array $flagged_fields = null): void

@@ -144,8 +144,10 @@ final class ImportAdapter
         // AD10: fire, don't call WCS. OBA subscribes (no order); cheque does NOT use this path.
         // Both post-create actions are fired safe: the membership is already created,
         // so an extension throw (e.g. OBA's Bar ID minter) must NOT demote this row to
-        // needs_review — it is logged and the row stays 'created'.
-        $this->fireSafe('wicket_import_create_subscription', [(int) $membership_id, $user_id, $data->row]);
+        // needs_review — it is logged and the row stays 'created'. The subscription
+        // seam receives the staging row ID so the default InlineSubscriptionCreator
+        // can write the created subscription ID back onto the staged row (WWID-2350).
+        $this->fireSafe('wicket_import_create_subscription', [(int) $membership_id, $user_id, $data->row, (int) $data->stagingId]);
 
         // 14.4: post-create hook. stagingId is forwarded so extensions can write
         // extension_metadata (Bar ID, resolved tier name, View-in-MDP URL).

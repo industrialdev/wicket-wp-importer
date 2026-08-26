@@ -413,6 +413,11 @@ final class BatchProcessor
                 if ($result->orderId !== null) {
                     $staging->updateOrderId($stagingId, $result->orderId);
                 }
+                if ($result->subscriptionIds !== null) {
+                    // Persist created subscription IDs so the results CSV and the
+                    // /results endpoint report them (WWID-2350).
+                    $staging->updateSubscriptionIds($stagingId, $result->subscriptionIds);
+                }
             } catch (\Throwable $e) {
                 // Per-row isolation: a throw marks the row failed and the chunk continues.
                 $this->logger?->error('processRow threw; marking the row failed and continuing.', [

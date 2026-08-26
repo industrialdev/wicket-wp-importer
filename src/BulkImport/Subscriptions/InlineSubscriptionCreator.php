@@ -44,7 +44,7 @@ final class InlineSubscriptionCreator
 
     public function __construct(private readonly ?Logger $logger = null)
     {
-        add_action('wicket_import_create_subscription', [$this, 'create'], 10, 3);
+        add_action('wicket_import_create_subscription', [$this, 'create'], 10, 4);
     }
 
     /**
@@ -55,8 +55,11 @@ final class InlineSubscriptionCreator
      * @param int   $membershipPostId wicket_membership CPT post ID.
      * @param int   $userId           WP user ID the membership was created for.
      * @param array $row              Original CSV row.
+     * @param int   $stagingId        Staged row ID (0 when the caller had none);
+     *                                the created subscription ID is written back
+     *                                onto the staged row for the results CSV.
      */
-    public function create(int $membershipPostId, int $userId, array $row = []): void
+    public function create(int $membershipPostId, int $userId, array $row = [], int $stagingId = 0): void
     {
         if (! function_exists('wcs_create_subscription') || ! class_exists('WC_Subscriptions_Product')) {
             $this->logger?->warning('Inline subscription creator skipped: WCS not available.', [
@@ -82,6 +85,11 @@ final class InlineSubscriptionCreator
                 'membership_post_id' => $membershipPostId,
                 'subscription_id'    => $existing,
             ]);
+
+            // A retry of a staged row whose membership already carries a
+            // subscription must still report that ID (WWID-2350): the first run
+            // predates the write-back, and the results CSV reads the staged row.
+            $this->recordSubscriptionOnStagingRow($stagingId, [$existing]);
 
             return;
         }
@@ -178,6 +186,11 @@ final class InlineSubscriptionCreator
         // every re-run before this hook fires).
         update_post_meta($membershipPostId, 'membership_subscription_id', $subscriptionId);
         update_post_meta($membershipPostId, self::SUBSCRIPTION_META_KEY, $subscriptionId);
+
+        // Report the created subscription on the staged row (WWID-2350): the
+        // results CSV's "Subscription IDs" column reads the staged row, not the
+        // membership postmeta, and there is no order to carry the ID.
+        $this->recordSubscriptionOnStagingRow($stagingId, [$subscriptionId]);
 
         // End date is a refinement on a complete subscription; apply it last and
         // best-effort. A rejection (e.g. end <= next_payment) must not demote the
@@ -277,6 +290,22 @@ final class InlineSubscriptionCreator
         }
 
         return [$period, $interval];
+    }
+
+    /**
+     * Write subscription IDs onto the staged row when the caller provided one.
+     * Direct construction (no plugin singleton) mirrors the extension-side
+     * staging writes; the guard keeps call sites without a staged row free.
+     *
+     * @param list<int> $subscriptionIds
+     */
+    private function recordSubscriptionOnStagingRow(int $stagingId, array $subscriptionIds): void
+    {
+        if ($stagingId <= 0 || $subscriptionIds === []) {
+            return;
+        }
+
+        (new \WicketImporter\BulkImport\Database\ImportStagingTable())->updateSubscriptionIds($stagingId, $subscriptionIds);
     }
 
     /**
