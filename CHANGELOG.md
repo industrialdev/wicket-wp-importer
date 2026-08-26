@@ -5,6 +5,12 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 <!-- new releases inserted below this line -->
 
+## [1.0.35] - 2026-08-26
+
+### Fixed
+- **importer:** gate single-candidate payment matches on the amount, suppress customer emails by default
+
+
 ## [1.0.34] - 2026-08-26
 
 ### Fixed
