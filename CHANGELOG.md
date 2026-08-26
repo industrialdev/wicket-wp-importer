@@ -5,6 +5,12 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 <!-- new releases inserted below this line -->
 
+## [1.0.37] - 2026-08-26
+
+### Fixed
+- **admin:** scope asset loading after review findings
+
+
 ## [1.0.36] - 2026-08-26
 
 ### Fixed
