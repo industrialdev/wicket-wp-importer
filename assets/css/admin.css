@@ -606,18 +606,27 @@
 }
 
 /*
- * The help tip belongs beside the label, not below it. On the order edit
- * screen WooCommerce renders these labels block-level, which drops the tip
- * icon onto the input's row; inline-block puts "Batch ID [?]" on one line,
- * matching the tooltip placement on product screens. The ID selector beats
- * any single-class rule WooCommerce ships for the same element.
+ * The help tip belongs beside the label, not below it. WooCommerce core
+ * (assets/css/admin.css) ships #order_data .order_data_column .form-field
+ * label { display: block } (specificity 1-2-1), which drops the sibling tip
+ * icon onto the input's row. The wrapper div carries no .form-field class,
+ * so adding it here is free; two IDs (the WP postbox wrapper exists on the
+ * classic post screen AND under HPOS) reach 2-1-1 and win deterministically
+ * regardless of stylesheet order (WWID-2349 follow-up).
  */
-#woocommerce-order-data .order-batch-id-field label,
-.order_data_column .order-batch-id-field label {
+#woocommerce-order-data .order-batch-id-field .form-field label,
+.order_data_column .order-batch-id-field .form-field label {
 	display: inline-block;
 }
 
-/* Breathing room between the tip and any following inline content. */
+/*
+ * Center the tip on the label's line. WC core already gives the tip
+ * vertical-align: middle, but that anchors to baseline + half x-height,
+ * which lands ~3px below the text's visual center on the 13px admin line.
+ * A -2px offset centers the 16px icon on the glyphs (measured delta 0.1px
+ * on the order edit screen).
+ */
 .order-batch-id-field .woocommerce-help-tip {
 	margin-left: 4px;
+	vertical-align: -2px;
 }
