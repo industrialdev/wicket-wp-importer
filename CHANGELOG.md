@@ -5,6 +5,12 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 <!-- new releases inserted below this line -->
 
+## [1.0.39] - 2026-08-27
+
+### Fixed
+- **admin:** outgun WC core block-label rule on Batch ID help tip
+
+
 ## [1.0.38] - 2026-08-26
 
 ### Fixed
