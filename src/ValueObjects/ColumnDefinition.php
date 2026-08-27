@@ -29,6 +29,9 @@ final class ColumnDefinition
         public readonly bool $dedup = false,
     ) {}
 
+    /** @var list<string>|null */
+    private ?array $acceptedHeadersCache = null;
+
     /**
      * All header strings that should map to this column, normalized for comparison.
      *
@@ -36,17 +39,13 @@ final class ColumnDefinition
      */
     public function acceptedHeaders(): array
     {
-        // P4: mapHeaders() calls this once per (header x column) cell and the
-        // candidate set is immutable per instance — memoize by object id.
-        static $cache = [];
-        $oid = spl_object_id($this);
-        if (isset($cache[$oid])) {
-            return $cache[$oid];
+        if ($this->acceptedHeadersCache !== null) {
+            return $this->acceptedHeadersCache;
         }
 
         $candidates = array_merge([$this->key, $this->label], $this->aliases);
 
-        return $cache[$oid] = array_values(array_unique(array_map([self::class, 'normalize'], $candidates)));
+        return $this->acceptedHeadersCache = array_values(array_unique(array_map([self::class, 'normalize'], $candidates)));
     }
 
     /**
