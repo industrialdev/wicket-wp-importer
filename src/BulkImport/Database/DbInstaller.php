@@ -125,6 +125,9 @@ class DbInstaller
   extension_metadata longtext DEFAULT NULL,
   order_id bigint(20) unsigned DEFAULT NULL,
   subscription_ids text DEFAULT NULL,
+  payment_amount decimal(10,2) DEFAULT NULL,
+  expected_amount decimal(10,2) DEFAULT NULL,
+  discrepancy_amount decimal(10,2) DEFAULT NULL,
   created_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
   processed_at datetime DEFAULT NULL,
   PRIMARY KEY  (id),
@@ -171,37 +174,9 @@ class DbInstaller
   KEY idx_created_at (created_at)
 ) {$collate};";
 
-        // Phase 2 (Slice 5) payment rows. Separate table so the cheque/Phase 1
-        // staging path stays untouched; keyed by the same session_id + batch_id
-        // for unified review/history surfaces.
-        $payments_table = $wpdb->prefix . 'wicket_import_payment_records';
-        $payments_sql = "CREATE TABLE {$payments_table} (
-  id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
-  session_id char(36) NOT NULL,
-  batch_id char(36) DEFAULT NULL,
-  row_index int(11) NOT NULL DEFAULT 0,
-  raw_data longtext DEFAULT NULL,
-  validation_status varchar(40) NOT NULL DEFAULT 'pending',
-  validation_message text DEFAULT NULL,
-  import_status varchar(40) NOT NULL DEFAULT 'pending',
-  import_message text DEFAULT NULL,
-  processing_claimed_at datetime DEFAULT NULL,
-  matched_order_id bigint(20) unsigned DEFAULT NULL,
-  matched_subscription_ids text DEFAULT NULL,
-  created_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  processed_at datetime DEFAULT NULL,
-  PRIMARY KEY  (id),
-  KEY idx_session (session_id),
-  KEY idx_session_status (session_id, import_status),
-  KEY idx_batch (batch_id),
-  KEY idx_batch_status (batch_id, import_status),
-  KEY idx_matched_order (matched_order_id)
-) {$collate};";
-
         require_once ABSPATH . 'wp-admin/includes/upgrade.php';
         dbDelta($staged_sql);
         dbDelta($batches_sql);
-        dbDelta($payments_sql);
     }
 
     /**

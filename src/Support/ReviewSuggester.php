@@ -25,19 +25,27 @@ final class ReviewSuggester
      */
     public static function suggestedFix(string $status, string $reason): string
     {
+        // The needles are lowercase and the engine's messages capitalize
+        // sentence-initial words ("Shortfall: ..."), so normalize case once and
+        // use str_contains (case-sensitive) rather than stripos dances.
+        $reason = mb_strtolower($reason);
+
+        if ($reason !== '' && str_contains($reason, 'shortfall')) {
+            return __('Collect the outstanding balance or adjust the order, then retry or process the order manually.', 'wicket-wp-importer');
+        }
+        if ($reason !== '' && str_contains($reason, 'surplus')) {
+            return __('Record the surplus against the member offline, then process the order.', 'wicket-wp-importer');
+        }
         if ($status === 'needs_review') {
             return __('Reconcile the retained On Hold order with the failed subscription before proceeding.', 'wicket-wp-importer');
         }
-        if ($reason !== '' && stripos($reason, 'diverg') !== false) {
-            return __('Correct the order total in the source CSV, then re-upload the batch.', 'wicket-wp-importer');
-        }
-        if ($reason !== '' && stripos($reason, 'no member or membership') !== false) {
+        if ($reason !== '' && str_contains($reason, 'no member or membership')) {
             return __('Verify the member identifier exists on this site and the member has an active membership.', 'wicket-wp-importer');
         }
-        if ($reason !== '' && stripos($reason, 'product resolution') !== false) {
+        if ($reason !== '' && str_contains($reason, 'product resolution')) {
             return __('Check the tier succession map and the product mappings.', 'wicket-wp-importer');
         }
-        if ($reason !== '' && stripos($reason, 'order') !== false && stripos($reason, 'fail') !== false) {
+        if ($reason !== '' && str_contains($reason, 'order') && str_contains($reason, 'fail')) {
             return __('Check WooCommerce product setup and customer resolution.', 'wicket-wp-importer');
         }
 

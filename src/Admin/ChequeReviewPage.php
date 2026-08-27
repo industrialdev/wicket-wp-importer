@@ -11,24 +11,24 @@ use WicketImporter\WicketImporter as Plugin;
 
 /**
  * Cheque Phase 1 Review UI (WWID-2026): the human gate between Phase 1 (bulk
- * create) and Phase 2 (payment matching, Slice 5).
+ * create) and Phase 2 (reconciliation, D-LOCKBOX-4).
  *
  * Renders, for one cheque batch: a summary (total / processed / failed /
- * needs_review), a divergence warning, the failed + needs_review rows in a
- * WP_List_Table, an error CSV export (AD14, via Support\CsvExporter), and a
- * "Proceed to Phase 2" button armed ONLY when the batch is in the
- * pending_review state (the gate; BatchProcessor lands Phase 1 completion
- * there). The button's handler (handleProceed) verifies the Phase 2 site
- * gate, then arms Phase 2 via BatchProcessor::startPhase2 (shipped Slice 5).
- * The payment CSV that drives the run stages through the M7 control below.
+ * needs_review), the failed + needs_review rows in a WP_List_Table, an error
+ * CSV export (AD14, via Support\CsvExporter), and a "Proceed to Phase 2"
+ * button armed ONLY when the batch is in the pending_review state (the gate;
+ * BatchProcessor lands Phase 1 completion there). The button's handler
+ * (handleProceed) verifies the Phase 2 site gate, then arms Phase 2 via
+ * BatchProcessor::startPhase2. Phase 2 reconciles the SAME records against
+ * the orders Phase 1 created for them; there is no payment CSV upload.
  *
  * DISTINCT from the OBA validation screen: this is the cheque Phase 1 -> 2
  * gate, mounted under its own tab. OBA's flagged/valid + Upload/Restart screen
  * lives in ImportAdminPage's upload tab.
  *
- * Pure helpers (summaryCounts, isGateEnabled, divergenceCount, shapeReviewRow,
- * suggestedFix) carry no WP calls so they unit-test directly; render() and
- * handleProceed() are the WP-bound surface.
+ * Pure helpers (summaryCounts, isGateEnabled, shapeReviewRow, suggestedFix)
+ * carry no WP calls so they unit-test directly; render() and handleProceed()
+ * are the WP-bound surface.
  */
 final class ChequeReviewPage
 {
@@ -77,9 +77,7 @@ final class ChequeReviewPage
         $rows = $plugin->StagingTable()->getByImportStatus($sessionId, ['failed', 'needs_review', 'email_conflict', 'skipped_active_membership']);
 
         $this->renderSummary($summary, $batch);
-        $this->renderDivergenceNotice($rows);
         $this->renderLogTable($rows);
-        $this->renderPaymentUpload($batch, $sessionId);
         $this->renderGate($batch, $sessionId);
         $this->renderExportLink($sessionId);
 
@@ -109,8 +107,7 @@ final class ChequeReviewPage
             return;
         }
         $message = match ($status) {
-            'started' => __('Phase 2 started. The match engine is processing rows in the background.', 'wicket-wp-importer'),
-            'payment_uploaded' => __('Payment CSV staged. Review the payment row count, then proceed to Phase 2.', 'wicket-wp-importer'),
+            'started' => __('Phase 2 started. The reconciliation engine is processing records in the background.', 'wicket-wp-importer'),
             'not_ready' => __('Phase 2 could not start: no pending_review batch exists for this session yet.', 'wicket-wp-importer'),
             'disabled_by_config' => __('Phase 2 is disabled by site configuration. Enable it from the client theme to arm this gate.', 'wicket-wp-importer'),
             default => '',
@@ -118,7 +115,7 @@ final class ChequeReviewPage
         if ($message === '') {
             return;
         }
-        $class = $status === 'started' || $status === 'payment_uploaded' ? 'notice-success' : 'notice-warning';
+        $class = $status === 'started' ? 'notice-success' : 'notice-warning';
         printf(
             '<div class="notice %s"><p>%s</p></div>',
             esc_attr($class),
@@ -238,28 +235,6 @@ final class ChequeReviewPage
         echo '</tbody></table>';
     }
 
-    private function renderDivergenceNotice(array $rows): void
-    {
-        $divergent = self::divergenceCount($rows);
-        if ($divergent === 0) {
-            return;
-        }
-
-        printf(
-            '<div class="notice notice-warning"><p>%s</p></div>',
-            esc_html(sprintf(
-                /* translators: %d: divergent row count. */
-                _n(
-                    '%d row failed the total divergence check (CSV total differs from the calculated total).',
-                    '%d rows failed the total divergence check (CSV total differs from the calculated total).',
-                    $divergent,
-                    'wicket-wp-importer'
-                ),
-                $divergent
-            ))
-        );
-    }
-
     private function renderLogTable(array $rows): void
     {
         $table = new ReviewLogTable();
@@ -274,60 +249,6 @@ final class ChequeReviewPage
         }
 
         $table->display();
-    }
-
-    /**
-     * M7 (Story 9): the payment CSV upload control. Rendered only when Phase 2
-     * is enabled by the site. Once rows are staged it collapses to a summary
-     * line (re-ingest is refused server-side; retry resets failed rows).
-     */
-    private function renderPaymentUpload(array $batch, string $sessionId): void
-    {
-        if (!self::isPhase2Available()) {
-            return;
-        }
-
-        $status = (string) ($batch['status'] ?? '');
-        $payments = Plugin::get_instance()->PaymentStaging()->getImportSummary($sessionId);
-        $staged = array_sum($payments);
-
-        echo '<h2>' . esc_html__('Payment CSV (Phase 2)', 'wicket-wp-importer') . '</h2>';
-
-        if ($staged > 0) {
-            printf(
-                '<p>%s</p>',
-                esc_html(sprintf(
-                    /* translators: %d: staged payment row count. */
-                    _n(
-                        '%d payment row is staged. Proceed to Phase 2 to run the match.',
-                        '%d payment rows are staged. Proceed to Phase 2 to run the match.',
-                        $staged,
-                        'wicket-wp-importer'
-                    ),
-                    $staged
-                ))
-            );
-
-            return;
-        }
-
-        if ($status !== 'pending_review') {
-            echo '<p class="description">' . esc_html__('Upload a payment CSV after the batch reaches pending_review.', 'wicket-wp-importer') . '</p>';
-
-            return;
-        }
-
-        $restUrl = rest_url('/wicket/v1/import/session/' . $sessionId . '/payment-csv');
-        ?>
-		<div class="wicket-importer-payment-upload">
-			<input type="file" id="wicket-importer-payment-file" accept=".csv" />
-			<button type="button" class="button" id="wicket-importer-payment-upload-btn"
-				data-rest-url="<?php echo esc_url($restUrl); ?>">
-				<?php esc_html_e('Upload payment CSV', 'wicket-wp-importer'); ?>
-			</button>
-			<span class="wicket-importer-payment-status" aria-live="polite"></span>
-		</div>
-		<?php
     }
 
     private function renderGate(array $batch, string $sessionId): void
@@ -494,23 +415,6 @@ final class ChequeReviewPage
     public static function isPhase2Available(): bool
     {
         return (bool) apply_filters('wicket_import_phase2_enabled', false);
-    }
-
-    /**
-     * Count rows whose failure reason mentions a total divergence.
-     *
-     * @param list<array<string,mixed>> $rows Staged rows.
-     */
-    public static function divergenceCount(array $rows): int
-    {
-        $count = 0;
-        foreach ($rows as $row) {
-            if (stripos((string) ($row['import_message'] ?? ''), 'diverg') !== false) {
-                $count++;
-            }
-        }
-
-        return $count;
     }
 
     /**

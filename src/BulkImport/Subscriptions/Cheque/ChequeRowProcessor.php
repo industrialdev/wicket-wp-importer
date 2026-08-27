@@ -26,8 +26,12 @@ use WicketImporter\Services\Logger;
  * Compensation: a SubscriptionCreator failure AFTER the On Hold order was
  * created flags the row needs_review and retains the order_id (never
  * auto-cancels), mirroring the "MDP touched, WP side incomplete" pattern.
- * A resolution error, a divergent total, or an order-only failure stays
- * 'failed' with no order_id, since nothing durable was written.
+ * A resolution error or an order-only failure stays 'failed' with no
+ * order_id, since nothing durable was written.
+ *
+ * D-LOCKBOX-4 (2026-08-27): a divergent CSV total no longer fails the row.
+ * The CSV order_total is the bank-reported payment amount; Phase 1 builds the
+ * order at the calculated total either way and Phase 2 reconciles the two.
  */
 final class ChequeRowProcessor implements RowProcessor
 {
@@ -95,14 +99,14 @@ final class ChequeRowProcessor implements RowProcessor
             return RowResult::failed('Product resolution failed: ' . (string) $resolved->error);
         }
         if ($resolved->divergent) {
-            // The CSV total disagrees with the calculated total past tolerance:
-            // do not create an order for a wrong amount. Gated here (defensive)
-            // as well as upstream in the batch.
-            return RowResult::failed(sprintf(
-                'CSV total %.2F diverges from the expected %.2F.',
-                $csvTotal,
-                $resolved->expectedTotal
-            ));
+            // D-LOCKBOX-4: divergence is expected business data (bank amount vs
+            // calculated total), not an import error. Log it; create the order
+            // at the calculated total; Phase 2 records the discrepancy.
+            $this->logger?->warning('CSV total diverges from the calculated total; Phase 2 will record the discrepancy.', [
+                'staging_id' => $stagingId,
+                'csv_total' => $csvTotal,
+                'expected_total' => $resolved->expectedTotal,
+            ]);
         }
 
         $order = $this->orderCreator->create($memberData, $resolved, $this->batchLabel($row), $membershipPostId);

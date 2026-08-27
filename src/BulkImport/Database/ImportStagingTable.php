@@ -459,6 +459,162 @@ class ImportStagingTable
     }
 
     /**
+     * Count rows eligible for Phase 2 reconciliation: Phase 1 fully imported
+     * with an order on file (D-LOCKBOX-4). The Phase 2 total for a run.
+     */
+    public function countPhase2Eligible(string $session_id): int
+    {
+        global $wpdb;
+
+        return (int) $wpdb->get_var(
+            $wpdb->prepare(
+                "SELECT COUNT(*) FROM {$this->table_name} WHERE session_id = %s AND import_status = 'imported' AND order_id IS NOT NULL AND order_id > 0",
+                $session_id
+            )
+        );
+    }
+
+    /**
+     * Claim a bounded chunk of Phase 2 rows (single-chain, ORDER BY row_index
+     * + LIMIT): imported rows with an order move to 'phase2_processing' and
+     * get a claim timestamp for the threshold-guarded stale reclaim.
+     *
+     * @return int|false Rows claimed (0 = nothing left), or false on DB error.
+     */
+    public function claimPhase2Chunk(string $session_id, int $limit): int|false
+    {
+        global $wpdb;
+        $limit = max(1, $limit);
+
+        return (int) $wpdb->query(
+            $wpdb->prepare(
+                "UPDATE {$this->table_name}
+                 SET import_status = 'phase2_processing', processing_claimed_at = %s
+                 WHERE session_id = %s
+                   AND import_status = 'imported'
+                   AND order_id IS NOT NULL
+                   AND order_id > 0
+                   AND payment_amount IS NULL
+                 ORDER BY row_index ASC
+                 LIMIT %d",
+                $this->utcNowMysql(),
+                $session_id,
+                $limit
+            )
+        );
+    }
+
+    /**
+     * Fetch this session's claimed-but-unprocessed Phase 2 rows.
+     *
+     * @return list<array<string,mixed>>
+     */
+    public function getPhase2ProcessingBySession(string $session_id): array
+    {
+        global $wpdb;
+        $rows = $wpdb->get_results(
+            $wpdb->prepare(
+                "SELECT * FROM {$this->table_name} WHERE session_id = %s AND import_status = 'phase2_processing' ORDER BY row_index ASC",
+                $session_id
+            ),
+            ARRAY_A
+        );
+
+        return is_array($rows) ? array_values($rows) : [];
+    }
+
+    /**
+     * Persist one Phase 2 reconciliation outcome: terminal import status,
+     * reason, and the money triple (bank amount, order total, signed
+     * discrepancy = bank - total). NULL amounts for rows that never
+     * reconciled (order vanished, chunk exception).
+     */
+    public function updateReconciliation(
+        int $id,
+        string $import_status,
+        ?string $import_message,
+        ?float $paymentAmount,
+        ?float $expectedAmount,
+        ?float $discrepancyAmount
+    ): void {
+        global $wpdb;
+        $wpdb->update(
+            $this->table_name,
+            [
+                'import_status'      => $import_status,
+                'import_message'     => $import_message,
+                'payment_amount'     => $paymentAmount,
+                'expected_amount'    => $expectedAmount,
+                'discrepancy_amount' => $discrepancyAmount,
+                'processing_claimed_at' => null,
+                'processed_at'       => $this->utcNowMysql(),
+            ],
+            ['id' => $id],
+            ['%s', '%s', '%f', '%f', '%f', '%s', '%s'],
+            ['%d']
+        );
+    }
+
+    /**
+     * Reset Phase 2 failed rows to 'imported' so a retry re-reconciles them.
+     * Only rows that carry an order_id are Phase 2 failures (Phase 1 failures
+     * never created one). Shortfall needs_review rows are a human decision and
+     * are NOT reset (D-LOCKBOX-4 retry semantics).
+     */
+    public function resetPhase2FailedForRetry(string $session_id): int
+    {
+        global $wpdb;
+        $affected = $wpdb->query(
+            $wpdb->prepare(
+                "UPDATE {$this->table_name}
+                 SET import_status = 'imported', import_message = '',
+                     payment_amount = NULL, expected_amount = NULL, discrepancy_amount = NULL,
+                     processing_claimed_at = NULL, processed_at = NULL
+                 WHERE session_id = %s AND import_status = 'failed' AND order_id IS NOT NULL AND order_id > 0",
+                $session_id
+            )
+        );
+
+        return is_int($affected) ? $affected : 0;
+    }
+
+    /**
+     * Tally Phase 2 outcomes for a session (D-LOCKBOX-4). A reconciled row is
+     * any row that carries a payment_amount; failures are 'failed' rows with
+     * an order (Phase 1 failures have none); shortfall rows are needs_review
+     * with a payment_amount. Pending = eligible rows not yet claimed.
+     *
+     * @return array{succeeded:int,failed:int,needs_review:int,pending:int}
+     */
+    public function tallyPhase2(string $session_id): array
+    {
+        global $wpdb;
+
+        $tally = static function (string $sql, string $status) use ($wpdb, $session_id): int {
+            return (int) $wpdb->get_var($wpdb->prepare($sql, $session_id, $status));
+        };
+
+        return [
+            'succeeded'    => $tally(
+                "SELECT COUNT(*) FROM {$this->table_name} WHERE session_id = %s AND import_status = %s AND payment_amount IS NOT NULL",
+                'imported'
+            ),
+            'failed'       => $tally(
+                "SELECT COUNT(*) FROM {$this->table_name} WHERE session_id = %s AND import_status = %s AND order_id IS NOT NULL AND order_id > 0",
+                'failed'
+            ),
+            'needs_review' => $tally(
+                "SELECT COUNT(*) FROM {$this->table_name} WHERE session_id = %s AND import_status = %s AND payment_amount IS NOT NULL",
+                'needs_review'
+            ),
+            'pending'      => $tally(
+                "SELECT COUNT(*) FROM {$this->table_name} WHERE session_id = %s AND import_status = %s AND order_id IS NOT NULL AND order_id > 0 AND payment_amount IS NULL",
+                'imported'
+            ),
+        ];
+    }
+
+    /**
      * The session_id of any session with pending (unfinished) rows, or null when
      * none. Used by the upload concurrency gate so the 409 can name the blocking
      * session (S2) and the admin can clear the right one. A session whose rows
@@ -551,7 +707,17 @@ class ImportStagingTable
             )
         );
 
-        return is_int($affected) ? $affected : 0;
+        // Phase 2 claims (D-LOCKBOX-4): a dead 'phase2_processing' claim goes
+        // back to 'imported' with its payment columns still NULL so the next
+        // Phase 2 chunk (or retry) re-claims it.
+        $phase2Affected = $wpdb->query(
+            $wpdb->prepare(
+                "UPDATE {$this->table_name} SET import_status = 'imported', import_message = '', processing_claimed_at = NULL, processed_at = NULL WHERE import_status = 'phase2_processing' AND (processing_claimed_at IS NULL OR processing_claimed_at < %s)",
+                $cutoff
+            )
+        );
+
+        return max(is_int($affected) ? $affected : 0, is_int($phase2Affected) ? $phase2Affected : 0);
     }
 
     /**
@@ -676,6 +842,7 @@ class ImportStagingTable
             'needs_review'            => 0,
             'expired'                 => 0,
             'processing'              => 0,
+            'phase2_processing'       => 0,
         ];
 
         foreach ($results as $row) {

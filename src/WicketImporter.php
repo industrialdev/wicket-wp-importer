@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace WicketImporter;
 
 use WicketImporter\BulkImport\Database\ImportStagingTable;
-use WicketImporter\BulkImport\Database\PaymentStagingTable;
 use WicketImporter\BulkImport\Subscriptions\BundleRenewalSubscriber;
 
 /**
@@ -111,7 +110,6 @@ final class WicketImporter
             'Logger'         => $logger,
             'Mappings'       => new Mapping\MappingRepository(),
             'StagingTable'   => new ImportStagingTable(),
-            'PaymentStaging' => new PaymentStagingTable(),
             'FileParser'     => new BulkImport\FileParserService($logger),
             'Validation'     => new BulkImport\ValidationService($logger),
             'ImportAdapter'  => new BulkImport\ImportAdapter(),

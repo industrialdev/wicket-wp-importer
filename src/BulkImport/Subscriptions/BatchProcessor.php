@@ -5,8 +5,6 @@ declare(strict_types=1);
 namespace WicketImporter\BulkImport\Subscriptions;
 
 use WicketImporter\BulkImport\Database\ImportStagingTable;
-use WicketImporter\BulkImport\Database\PaymentStagingTable;
-use WicketImporter\BulkImport\Subscriptions\PaymentMatcher;
 use WicketImporter\Services\Logger;
 
 /**
@@ -249,6 +247,10 @@ final class BatchProcessor
      * phase2_running, writes phase2_started_at, schedules the first Phase 2
      * chunk, and returns the batch_id.
      *
+     * D-LOCKBOX-4: Phase 2 reconciles the session's own imported rows (each
+     * against the order Phase 1 created for it); the total is the eligible
+     * row count, not a separately staged payment file.
+     *
      * @return string|null The batch_id on success, null when no pending_review
      *                     batch exists for the session.
      */
@@ -266,12 +268,8 @@ final class BatchProcessor
             return null;
         }
 
-        $total = (int) ($wpdb->get_var(
-            $wpdb->prepare(
-                "SELECT COUNT(*) FROM {$wpdb->prefix}wicket_import_payment_records WHERE session_id = %s AND validation_status IN ('valid','warning')",
-                $sessionId
-            )
-        ));
+        $staging = new ImportStagingTable();
+        $total = $staging->countPhase2Eligible($sessionId);
 
         $wpdb->update(
             $wpdb->prefix . self::TABLE,
@@ -291,15 +289,29 @@ final class BatchProcessor
     }
 
     /**
-     * Reset Phase 2 failed/needs_review rows for a session and re-schedule the
-     * next chunk. Used by POST /import/batch/{id}/retry.
+     * Reset Phase 2 failed rows for a session and re-schedule the next chunk.
+     * Only failed rows re-run; shortfall needs_review rows are a human
+     * decision and are never auto-processed (D-LOCKBOX-4 retry semantics).
+     * Used by POST /import/session/{id}/retry.
+     *
+     * Retryable states: 'processing_complete' (the normal drain) and 'failed'
+     * WITH a phase2_started_at (the reschedule-cap abort; peer review
+     * 2026-08-27: without this the cap-abort outcome has no recovery path).
+     * A 'failed' batch that never started Phase 2 is a Phase 1 failure with
+     * nothing to resume.
      */
     public function retryPhase2(string $sessionId, int $createdByUserId): ?string
     {
         global $wpdb;
 
         $batch = $this->getBatchBySession($sessionId);
-        if ($batch === null || (string) ($batch['status'] ?? '') !== 'processing_complete') {
+        if ($batch === null) {
+            return null;
+        }
+
+        $status = (string) ($batch['status'] ?? '');
+        $phase2Started = ($batch['phase2_started_at'] ?? null) !== null;
+        if (!in_array($status, ['processing_complete', 'failed'], true) || ($status === 'failed' && !$phase2Started)) {
             return null;
         }
 
@@ -308,17 +320,19 @@ final class BatchProcessor
             return null;
         }
 
-        (new PaymentStagingTable())->resetFailedForRetry($sessionId);
+        $staging = new ImportStagingTable();
+        $staging->resetPhase2FailedForRetry($sessionId);
 
         $wpdb->update(
             $wpdb->prefix . self::TABLE,
             [
                 'status' => 'phase2_running',
+                'phase2_total' => $staging->countPhase2Eligible($sessionId),
                 'phase2_started_at' => \current_time('mysql', true),
                 'finished_at' => null,
             ],
             ['batch_id' => $batchId],
-            ['%s', '%s', '%s'],
+            ['%s', '%d', '%s', '%s'],
             ['%s']
         );
 
@@ -328,7 +342,7 @@ final class BatchProcessor
     }
 
     /**
-     * Aggregate progress for a Phase 2 batch (status + tally by import_status).
+     * Aggregate progress for a Phase 2 batch (status + reconciliation tally).
      *
      * @return array{batch_id: string, status: string, counts: array<string,int>, total_rows: int}|null
      */
@@ -339,14 +353,19 @@ final class BatchProcessor
             return null;
         }
 
-        $summary = (new PaymentStagingTable())->getImportSummary($sessionId);
-        $total = (int) ($batch['phase2_total'] ?? 0);
+        $tally = (new ImportStagingTable())->tallyPhase2($sessionId);
+        $counts = [
+            'imported'     => $tally['succeeded'],
+            'failed'       => $tally['failed'],
+            'needs_review' => $tally['needs_review'],
+            'pending'      => $tally['pending'],
+        ];
 
         return [
             'batch_id' => (string) ($batch['batch_id'] ?? ''),
             'status' => (string) ($batch['status'] ?? ''),
-            'counts' => $summary,
-            'total_rows' => $total,
+            'counts' => $counts,
+            'total_rows' => (int) ($batch['phase2_total'] ?? 0),
         ];
     }
 
@@ -497,9 +516,10 @@ final class BatchProcessor
     }
 
     /**
-     * Process one Phase 2 chunk (Slice 5). The wicket_import_process_phase2_chunk
-     * AS callback. Claims a bounded chunk of pending payment rows, runs the
-     * PaymentMatcher per row, advances status, then self-schedules.
+     * Process one Phase 2 chunk (D-LOCKBOX-4). The
+     * wicket_import_process_phase2_chunk AS callback. Claims a bounded chunk
+     * of imported rows with an order, reconciles each against its own order
+     * via the PaymentReconciler, advances status, then self-schedules.
      */
     public function processPhase2Chunk(string $batchId, string $sessionId, int $attempt = 1): void
     {
@@ -512,9 +532,9 @@ final class BatchProcessor
             return;
         }
 
-        $staging = new PaymentStagingTable();
+        $staging = new ImportStagingTable();
         $chunkSize = (int) apply_filters('wicket_import_chunk_size', WICKET_IMPORT_CHUNK_SIZE);
-        $claimed = $staging->claimChunk($sessionId, $chunkSize);
+        $claimed = $staging->claimPhase2Chunk($sessionId, $chunkSize);
 
         if ($claimed === false) {
             $this->logger?->error('Phase 2 claimChunk DB error; aborting.', [
@@ -526,42 +546,91 @@ final class BatchProcessor
         }
 
         if ($claimed === 0) {
-            // Phase 2 drained.
-            $this->finishRun($batchId, 'processing_complete', [], [
+            // Phase 2 drained: persist the reconciliation tally onto the batch.
+            $tally = $staging->tallyPhase2($sessionId);
+            $this->finishRun($batchId, 'processing_complete', [
+                'phase2_succeeded'    => $tally['succeeded'],
+                'phase2_failed'       => $tally['failed'],
+                'phase2_needs_review' => $tally['needs_review'],
+            ], [
                 'phase2_completed_at' => \current_time('mysql', true),
             ]);
 
             return;
         }
 
-        $matcher = new PaymentMatcher();
-        $rows = $staging->getProcessingBySession($sessionId);
-        foreach ($rows as $row) {
+        $reconciler = new PaymentReconciler($this->logger);
+        foreach ($staging->getPhase2ProcessingBySession($sessionId) as $row) {
             $stagingId = (int) ($row['id'] ?? 0);
             try {
                 $data = $this->decode($row['raw_data'] ?? null);
-                // Order meta stores the human-readable batch_label (D-LOCKBOX-3 +
-                // Story 12: the LABEL is the reporting key; the UUID is the join
-                // key). The seam filter keys on _batch_id meta, so we pass the
-                // label here.
-                $batchLabel = (string) ($this->getBatchBySession($sessionId)['batch_label'] ?? '');
-                $order = $matcher->resolveMatch($data, $batchLabel, $this->logger);
-                if ($order === null) {
-                    $staging->updateImportResult(
+                $orderId = (int) ($row['order_id'] ?? 0);
+                $order = $orderId > 0 && function_exists('wc_get_order') ? wc_get_order($orderId) : false;
+
+                if ($order === false) {
+                    $staging->updateReconciliation(
                         $stagingId,
                         'failed',
-                        $matcher->lastFailure ?? PaymentMatcher::reasonFor($data, 0, false)
+                        sprintf('No On Hold order for this record: order #%d no longer exists.', $orderId),
+                        null,
+                        null,
+                        null
                     );
                     continue;
                 }
-                $matched = $matcher->applyMatch($order, $data, $this->logger);
-                $staging->updateMatch($stagingId, (int) $matched['order_id'], wp_json_encode($matched['subscription_ids']));
-                $staging->updateImportResult($stagingId, 'imported', 'Payment matched; order processed.');
+
+                $orderStatus = (string) $order->get_status();
+                if ($orderStatus !== 'on-hold') {
+                    // Already processed outside this run (manual admin action,
+                    // or a prior run before a retry reset): terminal 'skipped'
+                    // so the row can NEVER re-enter the claim pool. Amounts stay
+                    // NULL (Phase 2 did not reconcile it), the message explains.
+                    if (in_array($orderStatus, ['processing', 'completed'], true)) {
+                        $staging->updateReconciliation(
+                            $stagingId,
+                            'skipped',
+                            sprintf('Order #%d was already processed before Phase 2; skipped.', $orderId),
+                            null,
+                            null,
+                            null
+                        );
+                    } else {
+                        $staging->updateReconciliation(
+                            $stagingId,
+                            'failed',
+                            sprintf('Order #%d is %s; only On Hold orders reconcile.', $orderId, $orderStatus),
+                            null,
+                            null,
+                            null
+                        );
+                    }
+                    continue;
+                }
+
+                $result = $reconciler->reconcile($order, $data);
+                $staging->updateReconciliation(
+                    $stagingId,
+                    $result->status,
+                    $result->message,
+                    $result->paymentAmount,
+                    $result->expectedAmount,
+                    $result->discrepancyAmount
+                );
+                if ($result->subscriptionIds !== []) {
+                    $staging->updateSubscriptionIds($stagingId, $result->subscriptionIds);
+                }
             } catch (\Throwable $e) {
-                $this->logger?->error('Payment match threw; marking the row failed and continuing.', [
+                $this->logger?->error('Reconciliation threw; marking the row failed and continuing.', [
                     'batch_id' => $batchId, 'row_id' => $stagingId, 'error' => $e->getMessage(),
                 ]);
-                $staging->updateImportResult($stagingId, 'failed', 'Chunk processing exception: ' . $e->getMessage());
+                $staging->updateReconciliation(
+                    $stagingId,
+                    'failed',
+                    'Chunk processing exception: ' . $e->getMessage(),
+                    null,
+                    null,
+                    null
+                );
             }
         }
 

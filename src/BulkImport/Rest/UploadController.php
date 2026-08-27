@@ -35,7 +35,6 @@ use WP_REST_Response;
  *   GET    /import/session/{id}/results-csv    Full results CSV (AD14).
  *   GET    /import/session/{id}/error-csv      Failed + needs_review CSV (AD14).
  *   GET    /import/session/{id}/source-csv    Retained source CSV download.
- *   POST   /import/session/{id}/payment-csv   Stage the payment CSV for a pending_review batch (M7).
  *   POST   /import/session/{id}/run            Conflict pre-pass + destructive import.
  *   POST   /import/cheque/session/{id}/run   Trigger the cheque bulk-create batch (Action Scheduler).
  *   DELETE /import/session/{id}                Clear the session.
@@ -123,13 +122,6 @@ final class UploadController
         register_rest_route($namespace, $sessionBase . '/retry', [
             'methods'             => 'POST',
             'callback'            => [$this, 'handleRetry'],
-            'permission_callback' => $permission,
-        ]);
-
-        // M7 (Story 9): stage the payment CSV that drives a Phase 2 run.
-        register_rest_route($namespace, $sessionBase . '/payment-csv', [
-            'methods'             => 'POST',
-            'callback'            => [$this, 'handlePaymentUpload'],
             'permission_callback' => $permission,
         ]);
 
@@ -293,7 +285,7 @@ final class UploadController
     /**
      * Shared file reception for CSV uploads: file param checks, PHP upload
      * errors, extension gate (S1), wp_handle_upload, and parse. One security
-     * surface for every upload route (member, cheque, payment).
+     * surface for every upload route (member, cheque).
      *
      * @param list<ColumnDefinition> $columns
      *
@@ -810,93 +802,7 @@ final class UploadController
     }
 
     /**
-     * POST /import/session/{id}/payment-csv (M7, Story 9) — parse, validate,
-     * and stage the payment CSV that drives a Phase 2 run.
-     *
-     * Same bank-file column contract as the cheque create CSV
-     * (wicket_import_cheque_columns: member identifier + order_total +
-     * check_id). Rows land in wicket_import_payment_records under the SAME
-     * session id as the Phase 1 batch: startPhase2() counts them from there.
-     * The source file is retained under the '<session>-payments' CsvStorage
-     * key so it never collides with the Phase 1 source CSV.
-     *
-     * @return WP_REST_Response|WP_Error
-     */
-    public function handlePaymentUpload(WP_REST_Request $request)
-    {
-        if (!\WicketImporter\Admin\ChequeReviewPage::isPhase2Available()) {
-            return $this->error(
-                'phase2_disabled_by_client_config',
-                __('Phase 2 (payment matching) is disabled by site configuration.', 'wicket-wp-importer'),
-                403
-            );
-        }
-
-        $sessionId = (string) ($request['id'] ?? '');
-        $plugin = Plugin::get_instance();
-
-        $batch = $plugin->BatchProcessor()->getBatchBySession($sessionId);
-        $stagedPayments = array_sum($plugin->PaymentStaging()->getImportSummary($sessionId));
-        $gate = self::paymentUploadGate($batch, $stagedPayments);
-        if ($gate !== null) {
-            return $this->error(
-                $gate,
-                $gate === 'payment_csv_already_staged'
-                    ? __('A payment CSV is already staged for this session. Retry the failed rows instead of uploading again.', 'wicket-wp-importer')
-                    : __('Payments can be uploaded only while the batch is pending_review.', 'wicket-wp-importer'),
-                409
-            );
-        }
-
-        $columns = $this->resolveChequeColumns();
-        [$error, $parse, $path, $originalName] = $this->receiveCsv($request, $columns);
-        if ($error !== null) {
-            return $error;
-        }
-
-        $summary = $plugin->Validation()->validateBatch($parse->rows, $columns);
-        $plugin->PaymentStaging()->insertBatch($this->buildStagedRows($parse->rows, $summary), $sessionId);
-
-        // Retain the payment source CSV (same rationale as Phase 1: staged rows
-        // cannot reconstruct the bank file). Suffix key avoids overwriting the
-        // Phase 1 source. A failed move is non-fatal.
-        if ($path !== '' && file_exists($path) && !CsvStorage::store($path, $sessionId . '-payments')) {
-            $plugin->Logger()->warning('Failed to retain the payment CSV for the session.', ['path' => $path, 'session_id' => $sessionId]);
-        }
-
-        return new WP_REST_Response([
-            'session_id'    => $sessionId,
-            'total_rows'    => $summary->total,
-            'valid_count'   => $summary->validCount,
-            'flagged_count' => count($summary->flagged),
-        ], 200);
-    }
-
-    /**
-     * Pure gate for payment CSV uploads (M7, Story 9). Fail-closed: only a
-     * pending_review batch with zero staged payment rows accepts an upload.
-     * Re-ingest is refused (a re-upload after a run would desync phase2_total
-     * and double-match rows); the retry path resets failed rows instead.
-     *
-     * @param array<string,mixed>|null $batch Batch row from getBatchBySession().
-     *
-     * @return string|null Error code, or null when the upload may proceed.
-     */
-    public static function paymentUploadGate(?array $batch, int $stagedPaymentRows): ?string
-    {
-        if ($batch === null || (string) ($batch['status'] ?? '') !== 'pending_review') {
-            return 'phase2_not_ready';
-        }
-
-        if ($stagedPaymentRows > 0) {
-            return 'payment_csv_already_staged';
-        }
-
-        return null;
-    }
-
-    /**
-     * POST /import/session/{id}/run-phase2 (Slice 5) — transition the most
+     * POST /import/session/{id}/run-phase2 (D-LOCKBOX-4) — transition the most
      * recent batch for the session from pending_review to phase2_running,
      * schedule the first Phase 2 chunk, return the batch_id.
      *
@@ -1159,7 +1065,7 @@ final class UploadController
         $headers = array_merge(
             ['Line'],
             $dataKeys,
-            ['Import Status', 'Message', 'MDP UUID', 'Order ID', 'Subscription IDs'],
+            ['Import Status', 'Message', 'MDP UUID', 'Order ID', 'Subscription IDs', 'Payment Amount', 'Expected Total', 'Discrepancy'],
             array_map(static fn (array $col) => (string) $col['label'], $extColumns)
         );
 
@@ -1193,6 +1099,13 @@ final class UploadController
             $line[] = (string) ($row['mdp_uuid'] ?? '');
             $line[] = ($orderId !== null && $orderId !== '') ? (string) $orderId : '';
             $line[] = implode(', ', Json::decodeArray($row['subscription_ids'] ?? null));
+
+            // Discrepancy reporting (D-LOCKBOX-4, spec Story 11): bank amount,
+            // calculated total, and the signed delta for every reconciled
+            // record. Empty for rows Phase 2 never reconciled.
+            $line[] = $row['payment_amount'] !== null ? sprintf('%.2F', (float) $row['payment_amount']) : '';
+            $line[] = $row['expected_amount'] !== null ? sprintf('%.2F', (float) $row['expected_amount']) : '';
+            $line[] = $row['discrepancy_amount'] !== null ? sprintf('%.2F', (float) $row['discrepancy_amount']) : '';
 
             // Extension cells: guarded like the table's extractors — a throwing
             // extractor yields an empty cell, never a broken export.

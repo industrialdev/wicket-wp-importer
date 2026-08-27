@@ -56,7 +56,6 @@
 		bindDropzone();
 		bindProceedButton(page);
 		bindRestartButton(page);
-		bindPaymentUpload();
 		bindIndividualForm();
 		applyFrozenColumns();
 		window.addEventListener('resize', applyFrozenColumns);
@@ -627,49 +626,6 @@
 					btn.textContent = originalText;
 					page.querySelectorAll('.wicket-importer-proceed').forEach(function(b) { b.disabled = false; });
 					window.WicketImportShowNotice(err.message, 'error');
-				});
-		});
-	}
-	// M7 (Story 9): payment CSV upload on the cheque review screen. Stages the
-	// bank payment file against the pending_review batch, then reloads so the
-	// review page reflects the staged payment rows.
-	function bindPaymentUpload() {
-		var btn = document.getElementById('wicket-importer-payment-upload-btn');
-		if (!btn) {
-			return;
-		}
-		var input = document.getElementById('wicket-importer-payment-file');
-		var status = btn.parentElement ? btn.parentElement.querySelector('.wicket-importer-payment-status') : null;
-		if (!input || !status) {
-			return;
-		}
-
-		btn.addEventListener('click', function() {
-			var file = input.files && input.files.length > 0 ? input.files[0] : null;
-			if (!file) {
-				status.textContent = t('Choose a CSV file first.');
-				return;
-			}
-
-			var fd = new FormData();
-			fd.append('file', file);
-			btn.disabled = true;
-			status.textContent = t('Uploading…');
-
-			fetch(btn.dataset.restUrl, {
-				method: 'POST',
-				headers: { 'X-WP-Nonce': cfg.restNonce },
-				credentials: 'same-origin',
-				body: fd
-			})
-				.then(toJson)
-				.then(function() {
-					// 200: reload so the review page reflects the staged payment rows.
-					window.location.search += '&wicket_import_phase2=payment_uploaded';
-				})
-				.catch(function(err) {
-					btn.disabled = false;
-					status.textContent = err && err.message ? err.message : t('Upload failed.');
 				});
 		});
 	}
