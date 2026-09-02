@@ -5,6 +5,12 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 <!-- new releases inserted below this line -->
 
+## [1.0.42] - 2026-09-02
+
+### Added
+- batch ID in Woo Analytics reporting and orders list (WWID-2428)
+
+
 ## [1.0.41] - 2026-08-28
 
 ### Added
