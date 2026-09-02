@@ -151,6 +151,12 @@ final class WicketImporter
         // Order screen (HPOS-safe hook; gated on WooCommerce at render time).
         (new Admin\OrderBatchIdMetabox())->register();
 
+        // WWID-2428: Batch ID surfaces for reporting - Analytics > Orders
+        // (REST field + CSV export + JS table column) and the admin orders
+        // list table. Both the bulk runs and the manual field write the same
+        // `_batch_id` meta, so one column covers both.
+        (new Admin\AnalyticsBatchIdColumn())->register();
+
         // DB-drift notice (DV recreation reminder) for admins who updated the
         // plugin without deactivating+reactivating it.
         add_action('admin_notices', [BulkImport\Database\DbInstaller::class, 'maybeRenderDriftNotice']);
