@@ -34,6 +34,40 @@ final class DefaultColumns
     public const GENDER_VALUES = ['M', 'F', 'X'];
 
     /**
+     * Core's generic cheque (lockbox) columns (WWID-2441): the order total and
+     * check number every bank file carries. The member identifier is
+     * client-specific (OBA: bar_id) and joins via the
+     * wicket_import_cheque_columns filter at the resolution sites (REST upload/
+     * run and the admin validation tables), which all read THIS factory so
+     * every surface agrees on the contract.
+     *
+     * Presentation overrides (wicket_import_csv_column_labels/order) describe
+     * the member import and cannot distinguish flows, so consumers of this set
+     * skip applyClientOverrides (WWID-2441 peer review).
+     *
+     * @return list<ColumnDefinition>
+     */
+    public static function cheque(): array
+    {
+        return [
+            new ColumnDefinition(
+                key: 'order_total',
+                label: __('Order Total', 'wicket-wp-importer'),
+                required: true,
+                // Bank lockbox files label the total "Amount" (WWID-2438).
+                aliases: ['amount'],
+                validators: [['type' => 'required'], ['type' => 'numeric']],
+            ),
+            new ColumnDefinition(
+                key: 'check_id',
+                label: __('Check #', 'wicket-wp-importer'),
+                required: true,
+                validators: [['type' => 'required']],
+            ),
+        ];
+    }
+
+    /**
      * The baseline bulk-import column set.
      *
      * @return list<ColumnDefinition>

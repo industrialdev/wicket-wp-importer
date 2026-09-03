@@ -7,6 +7,7 @@ namespace WicketImporter\BulkImport\Rest;
 use WicketImporter\Support\ColumnOrder;
 use WicketImporter\Support\CsvExporter;
 use WicketImporter\Support\CsvStorage;
+use WicketImporter\Support\DefaultColumns;
 use WicketImporter\Support\Json;
 use WicketImporter\Support\ReviewSuggester;
 use WicketImporter\Support\SecuresRequests;
@@ -657,6 +658,31 @@ final class UploadController
     }
 
     /**
+     * Ordered column keys for a session's exports/tables, by the session's
+     * recorded flow (WWID-2441). Cheque sessions resolve the cheque contract;
+     * everything else keeps the member bulk registry. Flow comes from the
+     * batch row — a client-supplied ?context= can never swap the contract
+     * (same reasoning as the /run flow guards).
+     *
+     * Cheque columns bypass client presentation overrides: the
+     * labels/order filters describe the member import and cannot distinguish
+     * flows, so applying them here would relabel cheque headers with member
+     * presentation (OBA hooks both globally).
+     *
+     * @param array<array<string,mixed>> $rows
+     * @return list<string>
+     */
+    private function keysForSession(string $sessionId, array $rows): array
+    {
+        $flowBatch = Plugin::get_instance()->BatchProcessor()->getBatchBySession($sessionId);
+        if (($flowBatch['import_flow'] ?? 'member') !== 'cheque') {
+            return ColumnOrder::forRows($rows);
+        }
+
+        return ColumnOrder::forRows($rows, $this->resolveChequeColumns(), false);
+    }
+
+    /**
      * GET /import/session/{id}/flagged-csv — flagged rows CSV (AD14).
      */
     public function handleFlaggedCsv(WP_REST_Request $request): never
@@ -666,7 +692,7 @@ final class UploadController
 
         (new CsvExporter())->download(
             sprintf('import-flagged-%s.csv', $sessionId),
-            $this->buildValidationCsv($rows)
+            $this->buildValidationCsv($rows, $this->keysForSession($sessionId, $rows))
         );
     }
 
@@ -680,7 +706,7 @@ final class UploadController
 
         (new CsvExporter())->download(
             sprintf('import-results-%s.csv', $sessionId),
-            $this->buildResultsCsv($rows)
+            $this->buildResultsCsv($rows, $this->keysForSession($sessionId, $rows))
         );
     }
 
@@ -696,15 +722,11 @@ final class UploadController
         $sessionId = (string) ($request['id'] ?? '');
         $rows = Plugin::get_instance()->StagingTable()->getByImportStatus($sessionId, ['failed', 'needs_review', 'email_conflict', 'skipped_active_membership']);
 
-        // Cheque sessions export with the cheque column contract so headers
-        // match the uploaded file (member defaults would show member columns).
-        $columns = $request->get_param('context') === 'cheque'
-            ? $this->resolveChequeColumns()
-            : $this->resolveColumns();
-
+        // WWID-2441: flow comes from the session's batch row, never a client
+        // param — the old hardcoded ?context=cheque mislabeled member batches.
         (new CsvExporter())->download(
             sprintf('import-errors-%s.csv', $sessionId),
-            $this->buildErrorCsv($rows, $columns)
+            $this->buildErrorCsv($rows, $this->keysForSession($sessionId, $rows))
         );
     }
 
@@ -940,36 +962,9 @@ final class UploadController
     private function resolveChequeColumns(): array
     {
         /** @var list<ColumnDefinition> $columns */
-        $columns = apply_filters('wicket_import_cheque_columns', $this->defaultChequeColumns(), ['context' => 'cheque']);
+        $columns = apply_filters('wicket_import_cheque_columns', DefaultColumns::cheque(), ['context' => 'cheque']);
 
         return is_array($columns) ? $columns : [];
-    }
-
-    /**
-     * The generic lockbox columns every cheque CSV carries. The member
-     * identifier (bar_id for OBA) is intentionally NOT here — core is agnostic
-     * to it (AD1); the client supplies it via wicket_import_cheque_columns.
-     *
-     * @return list<ColumnDefinition>
-     */
-    private function defaultChequeColumns(): array
-    {
-        return [
-            new ColumnDefinition(
-                key: 'order_total',
-                label: __('Order Total', 'wicket-wp-importer'),
-                required: true,
-                // Bank lockbox files label the total "Amount" (WWID-2438).
-                aliases: ['amount'],
-                validators: [['type' => 'required'], ['type' => 'numeric']],
-            ),
-            new ColumnDefinition(
-                key: 'check_id',
-                label: __('Check #', 'wicket-wp-importer'),
-                required: true,
-                validators: [['type' => 'required']],
-            ),
-        ];
     }
 
     /**
@@ -1040,9 +1035,9 @@ final class UploadController
      * @param list<array<string,mixed>> $rows Staged rows.
      * @return list<list<string>>
      */
-    private function buildValidationCsv(array $rows): array
+    private function buildValidationCsv(array $rows, ?array $dataKeys = null): array
     {
-        $dataKeys = ColumnOrder::forRows($rows);
+        $dataKeys ??= ColumnOrder::forRows($rows);
         $headers = array_merge(['Line'], $dataKeys, ['Status', 'Reason', 'Flagged Fields']);
 
         $out = [];
@@ -1070,9 +1065,9 @@ final class UploadController
      * @param list<array<string,mixed>> $rows Staged rows.
      * @return list<list<string>>
      */
-    private function buildResultsCsv(array $rows): array
+    private function buildResultsCsv(array $rows, ?array $dataKeys = null): array
     {
-        $dataKeys = ColumnOrder::forRows($rows);
+        $dataKeys ??= ColumnOrder::forRows($rows);
 
         /*
          * Extension columns use the same contract as the on-screen results
@@ -1158,9 +1153,9 @@ final class UploadController
      * @param list<array<string,mixed>> $rows Staged rows.
      * @return list<list<string>>
      */
-    private function buildErrorCsv(array $rows, ?array $columns = null): array
+    private function buildErrorCsv(array $rows, ?array $dataKeys = null): array
     {
-        $dataKeys = ColumnOrder::forRows($rows, $columns);
+        $dataKeys ??= ColumnOrder::forRows($rows);
         $headers = array_merge(['Line'], $dataKeys, ['Status', 'Reason', 'Order ID', 'Suggested Fix']);
 
         $out = [];

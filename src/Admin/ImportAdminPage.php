@@ -6,6 +6,7 @@ namespace WicketImporter\Admin;
 
 use HyperFields\HyperFields;
 use WicketImporter\Support\ColumnOrder;
+use WicketImporter\Support\DefaultColumns;
 use WicketImporter\Support\Json;
 use WicketImporter\Support\SecuresRequests;
 use WicketImporter\ValueObjects\ValidationResult;
@@ -429,7 +430,7 @@ class ImportAdminPage
             // Task 9.2: flagged-rows table. Rendered server-side from the same
             // getFlaggedBySession() data the REST /flagged endpoint exposes, so the
             // validation screen is correct on first paint (no separate fetch).
-            $this->renderFlaggedTable($sessionId);
+            $this->renderFlaggedTable($sessionId, $isCheque);
         ?>
 
 			<div class="wicket-importer-actions">
@@ -615,8 +616,11 @@ class ImportAdminPage
      * get a highlighted class + the field-level message surfaced.
      *
      * @param string $sessionId
+     * @param bool   $isCheque Flow from the session's batch row (the authoritative
+     *                        source, per the WWID-2437 peer review): cheque sessions
+     *                        render the cheque column contract only.
      */
-    private function renderFlaggedTable(string $sessionId): void
+    private function renderFlaggedTable(string $sessionId, bool $isCheque): void
     {
         $rows = Plugin::get_instance()->StagingTable()->getFlaggedBySession($sessionId);
 
@@ -631,7 +635,17 @@ class ImportAdminPage
 
         // Column order: registered wicket_import_csv_columns first, then any
         // extra row keys (shared helper, same logic as the CSV exports).
-        $columns = ColumnOrder::forRows($rows);
+        // WWID-2441: cheque sessions render the cheque column contract only —
+        // the member registry would front-load ~30 irrelevant person columns.
+        // Overrides are skipped for cheque: the labels/order filters describe
+        // the member import and cannot distinguish flows.
+        if ($isCheque) {
+            /** @var list<\WicketImporter\ValueObjects\ColumnDefinition> $definitions */
+            $definitions = apply_filters('wicket_import_cheque_columns', DefaultColumns::cheque(), ['context' => 'cheque']);
+            $columns = ColumnOrder::forRows($rows, is_array($definitions) ? $definitions : [], false);
+        } else {
+            $columns = ColumnOrder::forRows($rows);
+        }
         ?>
 		<div id="wicket-import-flagged-table" class="wicket-importer-table-wrap">
 			<table class="widefat striped wicket-importer-flagged-table">
@@ -1611,7 +1625,7 @@ class ImportAdminPage
 				<a class="button" href="<?php echo esc_url(wp_nonce_url($sourceRest . '/session/' . $batch->session_id . '/results-csv', 'wp_rest', '_wpnonce')); ?>">
 					<?php esc_html_e('Download report CSV', 'wicket-wp-importer'); ?>
 				</a>
-				<a class="button" href="<?php echo esc_url(wp_nonce_url($sourceRest . '/session/' . $batch->session_id . '/error-csv?context=cheque', 'wp_rest', '_wpnonce')); ?>">
+				<a class="button" href="<?php echo esc_url(wp_nonce_url($sourceRest . '/session/' . $batch->session_id . '/error-csv', 'wp_rest', '_wpnonce')); ?>">
 					<?php esc_html_e('Export errors (CSV)', 'wicket-wp-importer'); ?>
 				</a>
 				<?php if (in_array($batch->status, ['pending_review', 'phase2_running', 'processing_complete'], true)) : ?>

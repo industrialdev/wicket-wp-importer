@@ -32,10 +32,15 @@ final class ColumnOrder
      * @param array<array<string,mixed>> $rows  Staged rows (each with a raw_data JSON blob).
      * @param list<ColumnDefinition>    $columns Registered column definitions (optional;
      *                                          defaults to the wicket_import_csv_columns filter).
+     * @param bool                      $clientOverrides Apply the member-presentation
+     *                                          label/order filters (wicket_import_csv_column_labels/order).
+     *                                          Pass false for non-member column sets (e.g. the
+     *                                          cheque contract) — those filters cannot distinguish
+     *                                          flows and would mislabel foreign columns.
      *
      * @return list<string> Ordered, de-duplicated column keys.
      */
-    public static function forRows(array $rows, ?array $columns = null): array
+    public static function forRows(array $rows, ?array $columns = null, bool $clientOverrides = true): array
     {
         if ($columns === null) {
             $columns = self::resolvedColumns('bulk');
@@ -44,7 +49,9 @@ final class ColumnOrder
             // (label + order). applyClientOverrides is idempotent, so callers
             // that already finalized their set pay no cost, and callers passing
             // raw registered columns are not silently skipped.
-            $columns = self::applyClientOverrides($columns);
+            if ($clientOverrides) {
+                $columns = self::applyClientOverrides($columns);
+            }
         }
 
         // 1. Registered order first.
