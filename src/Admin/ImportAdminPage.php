@@ -1653,7 +1653,7 @@ class ImportAdminPage
 							<label>
 								<input type="checkbox" name="cleanup_orders" value="1">
 								<?php echo esc_html(sprintf(
-									__('Also cancel the %d On Hold order(s) this batch created, with their subscriptions.', 'wicket-wp-importer'),
+									__('Also cancel this batch\'s created orders that are still On Hold (%d order(s) total; only On Hold ones are cancelled), with their subscriptions.', 'wicket-wp-importer'),
 									$cleanupCount
 								)); ?>
 							</label>

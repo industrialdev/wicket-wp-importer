@@ -586,6 +586,15 @@ final class BatchProcessor
             // pending_review so the Review UI arms the Phase 2 gate. The inline
             // member path keeps 'completed' (finishRunBySession); this is the
             // cheque/AS path only.
+            //
+            // WWID-2437 guard: a clear/abandon that raced this already-scheduled
+            // chunk finalized the batch ('cleared'/'abandoned'). The chunk must
+            // not resurrect it as pending_review (a ghost batch with no rows).
+            $batch = $this->getBatchBySession($sessionId);
+            if (($batch['status'] ?? '') !== 'running') {
+                return;
+            }
+
             $this->finishRun($batchId, 'pending_review', $this->tally($sessionId, $staging), [
                 'phase1_completed_at' => \current_time('mysql', true),
                 'conflicting_roles' => $this->conflictingRolesJson($sessionId, $staging),

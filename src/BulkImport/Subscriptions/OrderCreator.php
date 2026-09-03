@@ -129,11 +129,18 @@ class OrderCreator
         }
 
         // Coupon-type discounts (WWID-2436): product-type discounts ride in as
-        // line items above; coupons apply at order level. Failures are logged
-        // and non-fatal, mirroring MappingResolver::applyMappings.
+        // line items above; coupons apply at order level. apply_coupon returns
+        // false/WP_Error on rejection (invalid, expired, usage limits) instead
+        // of throwing — log it, never silently ship a full-price order.
         foreach ($resolved->couponCodes as $couponCode) {
             try {
-                $order->apply_coupon($couponCode);
+                $applied = $order->apply_coupon($couponCode);
+                if ($applied === false || is_wp_error($applied)) {
+                    $this->logger?->warning('Discount coupon rejected by WooCommerce.', [
+                        'coupon' => $couponCode,
+                        'error'  => is_wp_error($applied) ? $applied->get_error_message() : 'apply_coupon returned false',
+                    ]);
+                }
             } catch (\Throwable $e) {
                 $this->logger?->warning('Discount coupon application threw; continuing.', ['coupon' => $couponCode, 'error' => $e->getMessage()]);
             }

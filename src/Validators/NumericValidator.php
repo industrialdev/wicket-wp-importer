@@ -25,7 +25,15 @@ final class NumericValidator implements ValidatorInterface
             return ValidationResult::valid();
         }
 
-        $stripped = preg_replace('/[$,\s]/u', '', $raw);
+        // Accounting-style negatives: (12.50) means -12.50 (reversals).
+        $negative = preg_match('/^\(.*\)$/', $raw) === 1;
+        if ($negative) {
+            $raw = trim((string) substr($raw, 1, -1));
+        }
+
+        // Strip currency artifacts ($, thousands commas, regular + non-breaking
+        // spaces — the latter copy-pasted from spreadsheets).
+        $stripped = preg_replace('/[$,\x{00A0}\s]/u', '', $raw);
 
         if ($stripped === null || preg_match('/^-?\d+(\.\d{1,2})?$/', $stripped) !== 1) {
             return new ValidationResult(ValidationResult::STATUS_INVALID, 'Value must be a numeric amount (e.g. 150.00).');
@@ -35,11 +43,15 @@ final class NumericValidator implements ValidatorInterface
         $min = $context['options']['min'] ?? null;
         $max = $context['options']['max'] ?? null;
 
-        if ($min !== null && $number < (float) $min) {
+        if ($negative) {
+            $number = -abs($number);
+        }
+
+        if ($min !== null && is_numeric($min) && $number < (float) $min) {
             return new ValidationResult(ValidationResult::STATUS_INVALID, sprintf('Value must be at least %s.', $min));
         }
 
-        if ($max !== null && $number > (float) $max) {
+        if ($max !== null && is_numeric($max) && $number > (float) $max) {
             return new ValidationResult(ValidationResult::STATUS_INVALID, sprintf('Value must be at most %s.', $max));
         }
 
