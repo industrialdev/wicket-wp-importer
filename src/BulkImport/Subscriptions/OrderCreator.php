@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace WicketImporter\BulkImport\Subscriptions;
 
 use WicketImporter\BulkImport\MemberData;
+use WicketImporter\Services\Logger;
 
 /**
  * Creates the On Hold WooCommerce order for one cheque-renewal row: the resolved
@@ -28,6 +29,10 @@ class OrderCreator
      * wicket_import_order_payment_method so a client can route elsewhere.
      */
     public const DEFAULT_PAYMENT_METHOD = 'cheque';
+
+    public function __construct(
+        private readonly ?Logger $logger = null,
+    ) {}
 
     /**
      * Create the On Hold order for a row's resolved products.
@@ -115,11 +120,23 @@ class OrderCreator
             $order->update_meta_data('_batch_id', $batchLabel);
         }
 
-        // Line items: membership renewal + sections + late fees. Returns the
-        // count added so a fully-empty set (every product missing) fails closed
-        // instead of producing an empty order.
+        // Line items: membership renewal + sections + late fees + discount
+        // products (negative-priced). Returns the count added so a fully-empty
+        // set (every product missing) fails closed instead of producing an
+        // empty order.
         if ($this->addLineItems($order, $resolved) === 0) {
             return OrderResult::failed('No products could be added to the order.');
+        }
+
+        // Coupon-type discounts (WWID-2436): product-type discounts ride in as
+        // line items above; coupons apply at order level. Failures are logged
+        // and non-fatal, mirroring MappingResolver::applyMappings.
+        foreach ($resolved->couponCodes as $couponCode) {
+            try {
+                $order->apply_coupon($couponCode);
+            } catch (\Throwable $e) {
+                $this->logger?->warning('Discount coupon application threw; continuing.', ['coupon' => $couponCode, 'error' => $e->getMessage()]);
+            }
         }
 
         // Story 5: stamp _membership_post_id_renew on every membership-linked
@@ -153,6 +170,11 @@ class OrderCreator
             $resolved->membershipProductId > 0 ? [$resolved->membershipProductId] : [],
             $resolved->sectionProductIds,
             $resolved->lateFeeProductIds,
+            // Discount products carry their own negative price (WWID-2436):
+            // they reduce the order total to match the member's discounted
+            // rate, keeping the order total consistent with the divergence
+            // check's expected total.
+            $resolved->discountProductIds,
         ), static fn ($id): bool => $id > 0));
 
         $added = 0;

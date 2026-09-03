@@ -82,11 +82,12 @@ class ProductResolver
         foreach (array_merge([$membershipProductId], $sectionProductIds, $lateFeeProductIds) as $productId) {
             $expected += $this->productPrice($productId);
         }
-        // B6: subtract product-type discounts so a discounted member is not
-        // false-positive gated. Coupon-code discounts can't be priced without
-        // cart context; the authoritative divergence check is the order's
-        // computed grand total, verified post-creation when OrderCreator lands.
-        foreach ($this->discountProductIds($membershipPostId) as $productId) {
+        // B6: product-type discounts join the order as their own negative-
+        // priced lines so a discounted member is not false-positive gated.
+        // Coupon-type discounts can't be priced without cart context; they
+        // ride to OrderCreator as codes and are applied at creation.
+        [$discountProductIds, $couponCodes] = $this->discountsFor($membershipPostId);
+        foreach ($discountProductIds as $productId) {
             $expected += $this->productPrice($productId);
         }
 
@@ -102,6 +103,8 @@ class ProductResolver
             lateFeeProductIds: $lateFeeProductIds,
             expectedTotal: $expected,
             divergent: $divergent,
+            discountProductIds: $discountProductIds,
+            couponCodes: $couponCodes,
         );
     }
 
@@ -152,21 +155,23 @@ class ProductResolver
     }
 
     /**
-     * Product-type discount IDs applicable to the member's role, for the
-     * divergence total. Coupon-type discounts are excluded (unpriceable without
-     * cart context).
+     * Role-keyed discount mappings for the member, split by application type.
+     * Product-type discounts are negative-priced lines (part of the order
+     * total); coupon-type discounts are applied to the order at creation.
      *
-     * @return list<int>
+     * @return array{0: list<int>, 1: list<string>} [discountProductIds, couponCodes]
      */
-    private function discountProductIds(int $membershipPostId): array
+    private function discountsFor(int $membershipPostId): array
     {
         $roles = MappingResolver::memberRoles($membershipPostId);
         if ($roles === []) {
-            return [];
+            return [[], []];
         }
 
         $entries = $this->mappingResolver()->mappingsForRoles($roles)['discounts'] ?? [];
-        $ids = [];
+
+        $productIds = [];
+        $couponCodes = [];
         foreach ($entries as $entry) {
             // SKU-canonical (D-LOCKBOX-1): entries may carry only a SKU;
             // resolve at call time like every other mapping consumer.
@@ -176,12 +181,14 @@ class ProductResolver
             if (($entry->applicationType ?? '') === 'product') {
                 $resolved = $entry->resolveProductId();
                 if ($resolved !== null && $resolved > 0) {
-                    $ids[] = $resolved;
+                    $productIds[] = $resolved;
                 }
+            } elseif (($entry->applicationType ?? '') === 'coupon' && !empty($entry->couponCode)) {
+                $couponCodes[] = (string) $entry->couponCode;
             }
         }
 
-        return $ids;
+        return [$productIds, $couponCodes];
     }
 
     /**
