@@ -961,7 +961,7 @@ final class UploadController
                 required: true,
                 // Bank lockbox files label the total "Amount" (WWID-2438).
                 aliases: ['amount'],
-                validators: [['type' => 'required']],
+                validators: [['type' => 'required'], ['type' => 'numeric']],
             ),
             new ColumnDefinition(
                 key: 'check_id',

@@ -8,6 +8,7 @@ use WicketImporter\Services\Logger;
 use WicketImporter\Validators\DateValidator;
 use WicketImporter\Validators\EmailValidator;
 use WicketImporter\Validators\EnumValidator;
+use WicketImporter\Validators\NumericValidator;
 use WicketImporter\Validators\PhoneValidator;
 use WicketImporter\Validators\RequiredValidator;
 use WicketImporter\Validators\UsStateValidator;
@@ -256,6 +257,7 @@ final class ValidationService
             'zip' => new ZipValidator($this->logger),
             'us_state' => new UsStateValidator(),
             'enum' => new EnumValidator(),
+            'numeric' => new NumericValidator(),
         ];
 
         // S2: never let a filter disable all validation or introduce a non-
