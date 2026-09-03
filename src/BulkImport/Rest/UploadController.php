@@ -935,6 +935,8 @@ final class UploadController
                 key: 'order_total',
                 label: __('Order Total', 'wicket-wp-importer'),
                 required: true,
+                // Bank lockbox files label the total "Amount" (WWID-2438).
+                aliases: ['amount'],
                 validators: [['type' => 'required']],
             ),
             new ColumnDefinition(
