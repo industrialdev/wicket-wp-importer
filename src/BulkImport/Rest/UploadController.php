@@ -794,6 +794,18 @@ final class UploadController
             );
         }
 
+        // Re-entry guard (WWID-2437 peer review): a double-submitted run POST
+        // used to start a SECOND batch row for the same session, which made
+        // the Clear/Abandon buttons act on ambiguous rows. Same guard as the
+        // member /run endpoint above.
+        if ($staging->isSessionRunning($sessionId)) {
+            return $this->error(
+                'import_session_active',
+                __('A previous run for this session is still in progress. Wait for it to finish or check the results screen before retrying.', 'wicket-wp-importer'),
+                409
+            );
+        }
+
         $userId = get_current_user_id();
 
         $batchId = $plugin->BatchProcessor()->startBatch(

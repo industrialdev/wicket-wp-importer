@@ -1353,19 +1353,19 @@ class ImportAdminPage
 								<td><?php echo esc_html($duration); ?></td>
 								<td><?php echo esc_html($finished); ?></td>
 								<td class="wicket-importer-history-actions-col">
-									<?php if (in_array($row->status, ['pending', 'running', 'pending_review'], true)) : ?>
+									<?php if (self::batchIsClearable($row)) : ?>
 										<form
 											method="post"
 											action="<?php echo esc_url(admin_url('admin-post.php')); ?>"
 											class="wicket-importer-clear-session-form"
-											onsubmit="return confirm('<?php echo esc_js($row->status === 'pending_review'
+											onsubmit="return confirm('<?php echo esc_js(in_array($row->status, ['pending_review', 'failed'], true)
 												? __('Abandon this batch? It can no longer be run; rows and reports are kept for audit. Order cleanup is available on the batch page.', 'wicket-wp-importer')
 												: __('Clear this session? The staged rows will be deleted and the import can no longer be run.', 'wicket-wp-importer')); ?>');"
 										>
 											<input type="hidden" name="action" value="wicket_import_clear_session">
 											<input type="hidden" name="batch_id" value="<?php echo esc_attr($row->batch_id); ?>">
 											<?php wp_nonce_field('wicket_import_clear_session', '_wpnonce'); ?>
-											<button type="submit" class="button button-link-delete"><?php echo esc_html($row->status === 'pending_review' ? __('Abandon batch', 'wicket-wp-importer') : __('Clear session', 'wicket-wp-importer')); ?></button>
+											<button type="submit" class="button button-link-delete"><?php echo esc_html(in_array($row->status, ['pending_review', 'failed'], true) ? __('Abandon batch', 'wicket-wp-importer') : __('Clear session', 'wicket-wp-importer')); ?></button>
 										</form>
 									<?php else : ?>
 										<?php if (in_array($row->status, ['pending_review', 'phase2_running', 'processing_complete'], true)) : ?>
@@ -1510,6 +1510,23 @@ class ImportAdminPage
     }
 
     /**
+     * Can this batch row be cleared/abandoned through the engine? Mirrors
+     * BatchProcessor::clearSession's guard (WWID-2437) so the buttons render
+     * exactly when the POST will succeed. Failed batches are clearable only
+     * while Phase 2 never started (a reschedule-cap abort lands there with
+     * rows still pending, which block uploads forever).
+     */
+    private static function batchIsClearable(object $batch): bool
+    {
+        $status = (string) ($batch->status ?? '');
+        if (in_array($status, ['pending', 'running', 'pending_review'], true)) {
+            return true;
+        }
+
+        return $status === 'failed' && empty($batch->phase2_started_at);
+    }
+
+    /**
      * Per-batch detail (drill-down). Header summary + paginated per-row
      * staged_records table.
      */
@@ -1602,15 +1619,16 @@ class ImportAdminPage
 						<?php $batch->status === 'pending_review' ? esc_html_e('Start Phase 2', 'wicket-wp-importer') : esc_html_e('Open Phase 2 review', 'wicket-wp-importer'); ?>
 					</a>
 				<?php endif; ?>
-				<?php if (in_array($batch->status, ['pending', 'running', 'pending_review'], true)) : ?>
-					<?php $cleanupCount = $batch->status === 'pending_review'
+				<?php if (self::batchIsClearable($batch)) : ?>
+					<?php $cleanupEligible = in_array($batch->status, ['pending_review', 'failed'], true) && empty($batch->phase2_started_at);
+					$cleanupCount = $cleanupEligible
 						? Plugin::get_instance()->StagingTable()->countCreatedOrders((string) $batch->session_id)
 						: 0; ?>
 					<form
 						method="post"
 						action="<?php echo esc_url(admin_url('admin-post.php')); ?>"
 						class="wicket-importer-clear-session-form"
-						onsubmit="return confirm('<?php echo esc_js($batch->status === 'pending_review'
+						onsubmit="return confirm('<?php echo esc_js(in_array($batch->status, ['pending_review', 'failed'], true)
 							? __('Abandon this batch? It can no longer be run; rows and reports are kept for audit.', 'wicket-wp-importer')
 							: __('Clear this session? The staged rows will be deleted and the import can no longer be run.', 'wicket-wp-importer')); ?>');"
 					>
@@ -1626,7 +1644,7 @@ class ImportAdminPage
 								)); ?>
 							</label>
 						<?php endif; ?>
-						<button type="submit" class="button button-link-delete"><?php echo esc_html($batch->status === 'pending_review' ? __('Abandon batch', 'wicket-wp-importer') : __('Clear session', 'wicket-wp-importer')); ?></button>
+						<button type="submit" class="button button-link-delete"><?php echo esc_html(in_array($batch->status, ['pending_review', 'failed'], true) ? __('Abandon batch', 'wicket-wp-importer') : __('Clear session', 'wicket-wp-importer')); ?></button>
 					</form>
 				<?php endif; ?>
 			</div>

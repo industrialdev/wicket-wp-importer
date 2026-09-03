@@ -186,20 +186,26 @@ final class BatchProcessor
      * admin-post handler and the REST DELETE route both funnel through here
      * so the status guard exists exactly once.
      *
-     * Guard: only sessions with no batch row yet (uploaded + validated, never
+     * Guard: sessions with no batch row yet (uploaded + validated, never
      * run — the validation screen's Restart Upload case), pending (staged,
-     * not started), running (run in flight or stuck), and pending_review
-     * (Phase 1 done, human gate) are clearable. From phase2_running onward
-     * the run moves money (On Hold -> processing) and Action Scheduler chunks
-     * may be mid-flight, so those states are refused.
+     * not started), running (run in flight or stuck), pending_review (Phase
+     * 1 done, human gate), and failed batches whose Phase 2 never started
+     * (a reschedule-cap abort lands there with rows still pending, which
+     * block uploads forever — the stuck-batch case WWID-2437 exists for) are
+     * clearable. Once Phase 2 starts the run moves money (On Hold ->
+     * processing) and Action Scheduler chunks may be mid-flight, so those
+     * states are refused.
      *
      * Audit policy: pre-run states (pending/running) never wrote durable
      * work, so their staged rows + source CSV are deleted as before. A
      * pending_review batch already created memberships/orders in Phase 1, so
      * its rows and CSV are KEPT: the batches row lands in `abandoned` and the
-     * staged rows stay as the per-row record of what touched Woo. Retained
-     * rows never block new uploads (hasActiveSession counts 'pending' rows
-     * only) and the TTL cron expires 'pending' rows only, so nothing rots.
+     * staged rows stay as the per-row record of what touched Woo. A failed
+     * batch keeps its CSV but its still-pending rows are flipped to
+     * 'expired' in place: they were never claimed, and pending rows are what
+     * hasActiveSession() counts, so keeping them pending would keep blocking
+     * uploads. Retained rows never block new uploads and the TTL cron
+     * expires 'pending' rows only, so nothing rots.
      *
      * When $cleanupOrders is true (opt-in checkbox), every order this session
      * created that is still On Hold is cancelled together with its stored
@@ -214,20 +220,28 @@ final class BatchProcessor
      */
     public function clearSession(string $sessionId, bool $cleanupOrders = false)
     {
-        $status = (string) ($this->getBatchBySession($sessionId)['status'] ?? '');
+        $batch = $this->getBatchBySession($sessionId);
+        $status = (string) ($batch['status'] ?? '');
         // No batch row = uploaded but never run: always pre-run, always clearable.
-        if ($status !== '' && !in_array($status, ['pending', 'running', 'pending_review'], true)) {
+        // A failed batch is clearable only while Phase 2 never started (see
+        // docblock); once payments moved it keeps its audit trail.
+        $phase2Started = ($batch['phase2_started_at'] ?? null) !== null;
+        if ($status !== ''
+            && !in_array($status, ['pending', 'running', 'pending_review'], true)
+            && !($status === 'failed' && !$phase2Started)) {
             return new WP_Error(
                 'batch_not_clearable',
                 sprintf(
-                    'Only pending, running, or pending_review batches can be cleared; this batch is "%s".',
+                    'Only pending, running, pending_review, or failed-before-Phase-2 batches can be cleared; this batch is "%s".',
                     $status !== '' ? $status : 'unknown'
                 )
             );
         }
 
         $fromStatus = $status !== '' ? $status : 'pending';
-        $prerun = $fromStatus !== 'pending_review';
+        // failed-without-Phase-2 may have written orders in Phase 1, so it
+        // shares the pending_review audit branch: keep rows, land 'abandoned'.
+        $prerun = !in_array($fromStatus, ['pending_review', 'failed'], true);
 
         $ordersCancelled = 0;
         $subscriptionsCancelled = 0;
@@ -245,6 +259,8 @@ final class BatchProcessor
             (new ImportStagingTable())->deleteSession($sessionId);
             CsvStorage::delete($sessionId);
             $rowsDeleted = true;
+        } elseif ($fromStatus === 'failed') {
+            (new ImportStagingTable())->expireSessionPendingRows($sessionId);
         }
 
         $this->logger?->info('Import batch cleared.', [
@@ -306,17 +322,19 @@ final class BatchProcessor
                 continue;
             }
 
+            $orderSubsCancelled = 0;
             foreach (array_unique(array_map('intval', $subscriptionIds)) as $subscriptionId) {
                 $subscription = function_exists('wcs_get_subscription') ? wcs_get_subscription($subscriptionId) : false;
                 if ($subscription instanceof \WC_Subscription && !$subscription->has_status(['cancelled'])) {
                     $subscription->update_status('cancelled', 'Lockbox batch abandoned before Phase 2.');
+                    $orderSubsCancelled++;
                     $subscriptionsCancelled++;
                 }
             }
 
             $order->update_status(
                 'cancelled',
-                sprintf('Lockbox batch abandoned before Phase 2; %d subscription(s) cancelled with it.', $subscriptionsCancelled)
+                sprintf('Lockbox batch abandoned before Phase 2; %d subscription(s) cancelled with it.', $orderSubsCancelled)
             );
             $ordersCancelled++;
         }

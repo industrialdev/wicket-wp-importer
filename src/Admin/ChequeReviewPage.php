@@ -138,11 +138,12 @@ final class ChequeReviewPage
         $paged = max(1, (int) ($_GET['paged'] ?? 1));
         $offset = ($paged - 1) * $perPage;
 
-        $total = (int) $wpdb->get_var("SELECT COUNT(*) FROM {$batchesTable} WHERE import_flow = 'cheque'");
+        $total = (int) $wpdb->get_var("SELECT COUNT(*) FROM {$batchesTable} WHERE import_flow = 'cheque' AND status NOT IN ('cleared', 'abandoned')");
         $rows = $total > 0 ? $wpdb->get_results($wpdb->prepare(
             "SELECT session_id, status, csv_filename, csv_row_count, phase1_succeeded, phase1_failed, phase1_needs_review, phase2_total, phase2_succeeded, created_at
              FROM {$batchesTable}
              WHERE import_flow = 'cheque'
+               AND status NOT IN ('cleared', 'abandoned')
              ORDER BY (status = 'pending_review') DESC, (status = 'phase2_running') DESC, id DESC
              LIMIT %d OFFSET %d",
             $perPage,

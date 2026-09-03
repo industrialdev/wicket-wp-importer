@@ -469,6 +469,24 @@ class ImportStagingTable
         );
     }
 
+    /**
+     * Mark a session's still-pending rows 'expired' (WWID-2437 failed-batch
+     * clear): the batch died before claiming them, and pending rows are what
+     * hasActiveSession() counts, so keeping them pending would keep blocking
+     * uploads. Rows keep their raw_data; 'expired' reads as abandoned in the
+     * results/report surfaces.
+     */
+    public function expireSessionPendingRows(string $session_id): void
+    {
+        global $wpdb;
+        $wpdb->query(
+            $wpdb->prepare(
+                "UPDATE {$this->table_name} SET import_status = 'expired' WHERE session_id = %s AND import_status = 'pending'",
+                $session_id
+            )
+        );
+    }
+
     public function deleteSession(string $session_id): void
     {
         global $wpdb;
