@@ -5,6 +5,12 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 <!-- new releases inserted below this line -->
 
+## [1.0.46] - 2026-09-03
+
+### Fixed
+- **cheque:** single History row per lockbox import (WWID-2440)
+
+
 ## [1.0.45] - 2026-09-03
 
 ### Fixed
