@@ -5,6 +5,12 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 <!-- new releases inserted below this line -->
 
+## [1.0.48] - 2026-09-03
+
+### Fixed
+- **cheque:** lockbox surfaces render cheque columns only (WWID-2441)
+
+
 ## [1.0.47] - 2026-09-03
 
 ### Added
