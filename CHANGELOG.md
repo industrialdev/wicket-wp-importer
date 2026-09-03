@@ -5,6 +5,12 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 <!-- new releases inserted below this line -->
 
+## [1.0.43] - 2026-09-03
+
+### Fixed
+- **cheque:** accept bank "Amount" header for order_total (WWID-2438)
+
+
 ## [1.0.42] - 2026-09-02
 
 ### Added
