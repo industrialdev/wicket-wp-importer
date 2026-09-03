@@ -452,6 +452,23 @@ class ImportStagingTable
     /**
      * Delete all rows for a session.
      */
+    /**
+     * Distinct orders a session's Phase 1 created (WWID-2437 cleanup count).
+     * Rows without an order (failures, needs_review without creation) are not
+     * counted, so the checkbox only promises orders that exist.
+     */
+    public function countCreatedOrders(string $session_id): int
+    {
+        global $wpdb;
+
+        return (int) $wpdb->get_var(
+            $wpdb->prepare(
+                "SELECT COUNT(DISTINCT order_id) FROM {$this->table_name} WHERE session_id = %s AND order_id > 0",
+                $session_id
+            )
+        );
+    }
+
     public function deleteSession(string $session_id): void
     {
         global $wpdb;

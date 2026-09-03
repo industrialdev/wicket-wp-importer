@@ -6,6 +6,9 @@ namespace WicketImporter\BulkImport\Subscriptions;
 
 use WicketImporter\BulkImport\Database\ImportStagingTable;
 use WicketImporter\Services\Logger;
+use WicketImporter\Support\CsvStorage;
+use WicketImporter\Support\Json;
+use WP_Error;
 
 /**
  * Generic bulk-import batch engine on Action Scheduler.
@@ -174,6 +177,151 @@ final class BatchProcessor
             $formats,
             ['%s']
         );
+    }
+
+    /**
+     * Clear a batch that has not started Phase 2 (WWID-2437).
+     *
+     * The single escape hatch for "I uploaded the wrong file": the History
+     * admin-post handler and the REST DELETE route both funnel through here
+     * so the status guard exists exactly once.
+     *
+     * Guard: only sessions with no batch row yet (uploaded + validated, never
+     * run — the validation screen's Restart Upload case), pending (staged,
+     * not started), running (run in flight or stuck), and pending_review
+     * (Phase 1 done, human gate) are clearable. From phase2_running onward
+     * the run moves money (On Hold -> processing) and Action Scheduler chunks
+     * may be mid-flight, so those states are refused.
+     *
+     * Audit policy: pre-run states (pending/running) never wrote durable
+     * work, so their staged rows + source CSV are deleted as before. A
+     * pending_review batch already created memberships/orders in Phase 1, so
+     * its rows and CSV are KEPT: the batches row lands in `abandoned` and the
+     * staged rows stay as the per-row record of what touched Woo. Retained
+     * rows never block new uploads (hasActiveSession counts 'pending' rows
+     * only) and the TTL cron expires 'pending' rows only, so nothing rots.
+     *
+     * When $cleanupOrders is true (opt-in checkbox), every order this session
+     * created that is still On Hold is cancelled together with its stored
+     * subscriptions. The D3 dedup skips members carrying an On Hold order, so
+     * a re-upload of the corrected file needs them out of the way first.
+     * Orders that moved past On Hold are skipped, never touched. Cancelled,
+     * not trashed: trash risks hard deletion by a site's privacy retention
+     * cron, while a cancelled order stays auditable and still falls out of
+     * the On Hold dedup query.
+     *
+     * @return array{status: string, rows_deleted: bool, orders_cancelled: int, subscriptions_cancelled: int, orders_skipped: int}|WP_Error
+     */
+    public function clearSession(string $sessionId, bool $cleanupOrders = false)
+    {
+        $status = (string) ($this->getBatchBySession($sessionId)['status'] ?? '');
+        // No batch row = uploaded but never run: always pre-run, always clearable.
+        if ($status !== '' && !in_array($status, ['pending', 'running', 'pending_review'], true)) {
+            return new WP_Error(
+                'batch_not_clearable',
+                sprintf(
+                    'Only pending, running, or pending_review batches can be cleared; this batch is "%s".',
+                    $status !== '' ? $status : 'unknown'
+                )
+            );
+        }
+
+        $fromStatus = $status !== '' ? $status : 'pending';
+        $prerun = $fromStatus !== 'pending_review';
+
+        $ordersCancelled = 0;
+        $subscriptionsCancelled = 0;
+        $ordersSkipped = 0;
+        if ($cleanupOrders && !$prerun) {
+            [$ordersCancelled, $subscriptionsCancelled, $ordersSkipped] = $this->cancelCreatedOrders($sessionId);
+        }
+
+        // Finalize the batches row BEFORE deleting rows so the stored phase
+        // stats tally from real data (same ordering as the old admin handler).
+        $this->finishRunBySession($sessionId, $prerun ? 'cleared' : 'abandoned');
+
+        $rowsDeleted = false;
+        if ($prerun) {
+            (new ImportStagingTable())->deleteSession($sessionId);
+            CsvStorage::delete($sessionId);
+            $rowsDeleted = true;
+        }
+
+        $this->logger?->info('Import batch cleared.', [
+            'session_id'              => $sessionId,
+            'from_status'             => $fromStatus,
+            'cleanup_orders'          => $cleanupOrders,
+            'orders_cancelled'        => $ordersCancelled,
+            'subscriptions_cancelled' => $subscriptionsCancelled,
+            'orders_skipped'          => $ordersSkipped,
+        ]);
+
+        return [
+            'status'                  => $prerun ? 'cleared' : 'abandoned',
+            'rows_deleted'            => $rowsDeleted,
+            'orders_cancelled'        => $ordersCancelled,
+            'subscriptions_cancelled' => $subscriptionsCancelled,
+            'orders_skipped'          => $ordersSkipped,
+        ];
+    }
+
+    /**
+     * Cancel the On Hold orders (+ their stored subscriptions) a session's
+     * Phase 1 created.
+     *
+     * Only On Hold orders are eligible: that is both the D3 dedup scope and
+     * the only state this engine creates orders in before payment matching.
+     * Subscription IDs come from the staged rows (written by
+     * SubscriptionCreator at Phase 1), so a batch with no surviving rows
+     * cleans up nothing rather than guessing.
+     *
+     * @return array{0: int, 1: int, 2: int} [ordersCancelled, subscriptionsCancelled, ordersSkipped]
+     */
+    private function cancelCreatedOrders(string $sessionId): array
+    {
+        if (!function_exists('wc_get_order')) {
+            return [0, 0, 0]; // WooCommerce absent: nothing durable to clean.
+        }
+
+        $subsByOrder = [];
+        foreach ((new ImportStagingTable())->getBySession($sessionId) as $row) {
+            $orderId = (int) ($row['order_id'] ?? 0);
+            if ($orderId <= 0) {
+                continue;
+            }
+            $subsByOrder[$orderId] = array_merge(
+                $subsByOrder[$orderId] ?? [],
+                Json::decodeArray($row['subscription_ids'] ?? null)
+            );
+        }
+
+        $ordersCancelled = 0;
+        $subscriptionsCancelled = 0;
+        $ordersSkipped = 0;
+
+        foreach ($subsByOrder as $orderId => $subscriptionIds) {
+            $order = wc_get_order($orderId);
+            if (!$order instanceof \WC_Order || $order->get_status() !== 'on-hold') {
+                $ordersSkipped++;
+                continue;
+            }
+
+            foreach (array_unique(array_map('intval', $subscriptionIds)) as $subscriptionId) {
+                $subscription = function_exists('wcs_get_subscription') ? wcs_get_subscription($subscriptionId) : false;
+                if ($subscription instanceof \WC_Subscription && !$subscription->has_status(['cancelled'])) {
+                    $subscription->update_status('cancelled', 'Lockbox batch abandoned before Phase 2.');
+                    $subscriptionsCancelled++;
+                }
+            }
+
+            $order->update_status(
+                'cancelled',
+                sprintf('Lockbox batch abandoned before Phase 2; %d subscription(s) cancelled with it.', $subscriptionsCancelled)
+            );
+            $ordersCancelled++;
+        }
+
+        return [$ordersCancelled, $subscriptionsCancelled, $ordersSkipped];
     }
 
     /**

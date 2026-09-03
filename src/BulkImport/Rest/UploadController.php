@@ -491,23 +491,31 @@ final class UploadController
     /**
      * DELETE /import/session/{id} — clear the session.
      *
+     * Funneled through the same BatchProcessor::clearSession guard as the
+     * History admin-post handler (WWID-2437): only pending, running, and
+     * pending_review batches are clearable, so a hand-built call can no
+     * longer wipe a Phase 2/completed batch's audit trail. The validation
+     * screen's "Restart Upload" button keeps working for clearable states.
+     *
      * @return WP_REST_Response
      */
     public function handleSessionDelete(WP_REST_Request $request)
     {
         $sessionId = (string) ($request['id'] ?? '');
-        $plugin = Plugin::get_instance();
-        // Finalize the batches row BEFORE deleting the rows so the stored phase
-        // stats tally from real data instead of zeroing out (was stuck 'running'
-        // since upload). Then drop the rows and the retained source CSV.
-        $plugin->BatchProcessor()->finishRunBySession($sessionId, 'cleared');
-        $plugin->StagingTable()->deleteSession($sessionId);
-        CsvStorage::delete($sessionId);
+
+        $result = Plugin::get_instance()->BatchProcessor()->clearSession($sessionId);
+        if (is_wp_error($result)) {
+            return $this->error(
+                $result->get_error_code(),
+                __($result->get_error_message(), 'wicket-wp-importer'),
+                409
+            );
+        }
 
         return new WP_REST_Response([
             'deleted'    => true,
             'session_id' => $sessionId,
-        ], 200);
+        ] + $result, 200);
     }
 
     /**
