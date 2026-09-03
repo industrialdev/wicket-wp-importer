@@ -5,6 +5,12 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 <!-- new releases inserted below this line -->
 
+## [1.0.49] - 2026-09-03
+
+### Fixed
+- **cheque:** apply role discounts to lockbox orders (WWID-2436)
+
+
 ## [1.0.48] - 2026-09-03
 
 ### Fixed
