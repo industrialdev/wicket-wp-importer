@@ -381,8 +381,16 @@ final class BatchProcessor
     }
 
     /**
-     * Kick off a batch run: insert the running batches row, then schedule the
-     * first chunk. Returns the batch_id so the caller can track the run.
+     * Start the cheque Phase 1 AS chain on the session's EXISTING upload
+     * batch row (WWID-2440). The upload endpoint already inserted that row
+     * (startRun: real filename, import_flow); inserting a SECOND row at run
+     * time orphaned the upload row at 'running'/"Awaiting import run"
+     * forever — the duplicate History entry QA reported. One session, one
+     * row: the upload row itself walks the full lifecycle.
+     *
+     * Returns null when the session has no runnable upload row (never
+     * uploaded, already pending_review/complete, cleared): the caller turns
+     * that into a 409, which also closes the old re-run-after-review hole.
      */
     /**
      * Action Scheduler hook the Phase 2 (Slice 5) chunks fire. Separate from
@@ -390,18 +398,18 @@ final class BatchProcessor
      */
     public const PHASE2_CHUNK_HOOK = 'wicket_import_process_phase2_chunk';
 
-    public function startBatch(string $sessionId, string $csvFilename, int $createdByUserId, int $totalRows): string
+    public function startChainOnUploadBatch(string $sessionId): ?string
     {
-        // The run row inherits the session's flow from the upload row (the
-        // upload endpoint is the only place the contract is chosen); callers
-        // cannot re-tag a session by passing a different flow here.
-        $flow = 'member';
-        $uploadBatch = $this->getBatchBySession($sessionId);
-        if ($uploadBatch !== null && ($uploadBatch['import_flow'] ?? '') === 'cheque') {
-            $flow = 'cheque';
+        $batch = $this->getBatchBySession($sessionId);
+        if ($batch === null || (string) ($batch['status'] ?? '') !== 'running') {
+            return null;
         }
 
-        $batchId = $this->startRun($sessionId, $csvFilename, $createdByUserId, $totalRows, $flow);
+        $batchId = (string) ($batch['batch_id'] ?? '');
+        if ($batchId === '') {
+            return null;
+        }
+
         $this->scheduleNextChunk($batchId, $sessionId, 1);
 
         return $batchId;

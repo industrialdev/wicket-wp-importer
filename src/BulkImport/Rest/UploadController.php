@@ -806,14 +806,18 @@ final class UploadController
             );
         }
 
-        $userId = get_current_user_id();
-
-        $batchId = $plugin->BatchProcessor()->startBatch(
-            $sessionId,
-            (string) ($request->get_param('filename') ?? __('Cheque renewal import', 'wicket-wp-importer')),
-            $userId > 0 ? $userId : 0,
-            $total
-        );
+        // WWID-2440: reuse the upload row — inserting a second batch row here
+        // orphaned the upload row at 'running'/"Awaiting import run" forever
+        // (the duplicate History entry). Null = the session has no runnable
+        // upload row (already run/reviewed/cleared).
+        $batchId = $plugin->BatchProcessor()->startChainOnUploadBatch($sessionId);
+        if ($batchId === null) {
+            return $this->error(
+                'cheque_run_unavailable',
+                __('No runnable upload batch exists for this session; it may have run already. Start from a fresh upload.', 'wicket-wp-importer'),
+                409
+            );
+        }
 
         return new WP_REST_Response([
             'session_id' => $sessionId,

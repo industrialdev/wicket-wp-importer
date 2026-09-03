@@ -23,6 +23,7 @@ class DbInstaller
         $installed_version = get_option(self::DB_VERSION_OPTION);
         if ($installed_version !== WICKET_IMPORT_DB_VERSION) {
             self::createTables();
+            self::retireOrphanUploadBatches();
             update_option(self::DB_VERSION_OPTION, WICKET_IMPORT_DB_VERSION);
             // Backfill the session-expiry cron on upgrade so installs activated
             // before Task 38.3 land the schedule without a manual re-activation
@@ -49,6 +50,36 @@ class DbInstaller
          * is safe to run on every admin/CLI request: one option read.
          */
         self::seedDefaultMappings();
+    }
+
+    /**
+     * One-off data repair for WWID-2440 (runs inside the version-drift
+     * branch). Cheque runs used to insert a SECOND batch row at run time,
+     * orphaning the upload row at 'running' with zero settled Phase 1 work
+     * forever — the duplicate "Awaiting import run" History entry. An orphan
+     * is a running row whose session has a NEWER batch row: the real run
+     * lives there, so the upload row can never run again. Mark those
+     * 'cleared' so History stops showing them as stuck. Idempotent: after
+     * the repair no session has a running row with a newer sibling.
+     */
+    public static function retireOrphanUploadBatches(): void
+    {
+        global $wpdb;
+        $batches = $wpdb->prefix . 'wicket_import_batches';
+
+        $wpdb->query(
+            "UPDATE {$batches} orphan
+             LEFT JOIN {$batches} newer
+                ON newer.session_id = orphan.session_id
+                AND newer.id > orphan.id
+             SET orphan.status = 'cleared',
+                 orphan.finished_at = UTC_TIMESTAMP()
+             WHERE orphan.status = 'running'
+               AND orphan.phase1_succeeded = 0
+               AND orphan.phase1_failed = 0
+               AND orphan.phase1_needs_review = 0
+               AND newer.id IS NOT NULL"
+        );
     }
 
     /**

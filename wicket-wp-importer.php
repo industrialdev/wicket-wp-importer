@@ -18,7 +18,7 @@ if (!defined('ABSPATH')) {
 
 // Constants
 define('WICKET_IMPORT_VERSION', get_file_data(__FILE__, ['Version' => 'Version'], false)['Version']);
-define('WICKET_IMPORT_DB_VERSION', '1.5.0');
+define('WICKET_IMPORT_DB_VERSION', '1.6.0');
 define('WICKET_IMPORT_PATH', plugin_dir_path(__FILE__));
 define('WICKET_IMPORT_URL', plugin_dir_url(__FILE__));
 define('WICKET_IMPORT_BASENAME', plugin_basename(__FILE__));
