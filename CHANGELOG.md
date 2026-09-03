@@ -5,6 +5,12 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 <!-- new releases inserted below this line -->
 
+## [1.0.45] - 2026-09-03
+
+### Fixed
+- **cheque:** peer-review follow-ups for the abandon flow (WWID-2437)
+
+
 ## [1.0.44] - 2026-09-03
 
 ### Added
