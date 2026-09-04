@@ -70,7 +70,7 @@
 	 * out whether a background Action Scheduler run had finished.
 	 *
 	 * While the wrapper carries data-batch-status of a live state, poll the
-	 * unified progress endpoint every 3s (matching the chunk cadence), move
+	 * unified progress endpoint every 5s, move
 	 * the counts and progress bar in place, and reload ONCE when the batch
 	 * lands so the server-rendered tables paint the new state. A stalled run
 	 * (no staging activity past the threshold) swaps the spinner copy for a
@@ -84,7 +84,7 @@
 		var sessionId = page.dataset.sessionId || '';
 		var LIVE = ['pending', 'running', 'phase2_running'];
 		var TERMINAL = ['pending_review', 'processing_complete', 'completed', 'failed', 'cleared', 'abandoned'];
-		var FAST_MS = 3000;
+		var FAST_MS = 5000;
 		var SLOW_MS = 30000;
 		if (!sessionId || LIVE.indexOf(status) === -1 || !cfg.restRoot) {
 			return;
