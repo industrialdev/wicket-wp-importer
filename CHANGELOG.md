@@ -5,6 +5,12 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 <!-- new releases inserted below this line -->
 
+## [1.0.52] - 2026-09-04
+
+### Fixed
+- **cheque:** poll import progress every 5s (WWID-2439)
+
+
 ## [1.0.51] - 2026-09-04
 
 ### Added
