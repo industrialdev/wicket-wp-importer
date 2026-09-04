@@ -756,6 +756,25 @@ class ImportStagingTable
     }
 
     /**
+     * The newest processed_at stamp across a session's rows (UTC), or null
+     * when no row has ever settled. The live-progress endpoint uses it as the
+     * activity signal for stall detection (WWID-2439): a running batch whose
+     * newest stamp stops advancing has a dead Action Scheduler chain.
+     */
+    public function lastProcessedAt(string $session_id): ?string
+    {
+        global $wpdb;
+        $last = $wpdb->get_var(
+            $wpdb->prepare(
+                "SELECT MAX(processed_at) FROM {$this->table_name} WHERE session_id = %s",
+                $session_id
+            )
+        );
+
+        return (is_string($last) && $last !== '') ? $last : null;
+    }
+
+    /**
      * Current time as a UTC 'Y-m-d H:i:s' string. Reuses the base plugin's
      * wicket_time_get_utc_datetime helper (AD15 rung 1); falls back to gmdate
      * when the helper is not loaded (e.g. the unit suite).

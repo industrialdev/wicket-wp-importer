@@ -147,6 +147,10 @@ final class WicketImporter
         // by redirecting to the run-phase2 endpoint with the right batch id.
         add_action('admin_post_wicket_import_cheque_proceed', [Admin\ChequeReviewPage::class, 'handleProceed']);
 
+        // WWID-2439: the cheque queue's "Abandon selected" bulk form. Same
+        // clearSession guard per session as the single History button.
+        add_action('admin_post_wicket_import_cheque_abandon_bulk', [Admin\ChequeReviewPage::class, 'handleBulkAbandon']);
+
         // Story 13: optional, pattern-validated Batch ID field on the WC Edit
         // Order screen (HPOS-safe hook; gated on WooCommerce at render time).
         (new Admin\OrderBatchIdMetabox())->register();

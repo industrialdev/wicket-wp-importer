@@ -64,6 +64,14 @@ final class BatchProcessor
     private const RESCHEDULE_HEADROOM = 5;
 
     /**
+     * Seconds without staging-table activity before a running batch counts as
+     * stalled (WWID-2439). Chunk cadence is per-second; five minutes of
+     * silence means the Action Scheduler chain is dead (wp-cron miss), not
+     * slow. Filter: wicket_import_stall_seconds, floored at 60.
+     */
+    public const STALL_SECONDS = 300;
+
+    /**
      * Insert a `wicket_import_batches` row for the run start. Returns the new
      * batch_id (a UUID) so the caller can pass it to finishRun.
      */
@@ -541,6 +549,123 @@ final class BatchProcessor
             'counts' => $counts,
             'total_rows' => (int) ($batch['phase2_total'] ?? 0),
         ];
+    }
+
+    /**
+     * Live progress for BOTH phases (WWID-2439). The Phase 1 tally columns on
+     * the batch row are only written at finishRun, so while a run is in flight
+     * the live counts come from the staging table (getImportSummary); Phase 2
+     * tallies come from the existing reconciliation tally. Also answers "is
+     * this run alive?": a running/phase2_running batch whose newest staging
+     * activity predates the stall threshold has a dead Action Scheduler chain
+     * (the zombie 'running' rows QA reported), which the UI surfaces instead
+     * of a spinner that never ends.
+     *
+     * Same shape as getPhase2Progress() (batch_id, status, counts,
+     * total_rows) plus the additive live keys; it reads the batch row ONCE
+     * and keeps getPhase2Progress untouched for its existing callers (this
+     * endpoint is polled every 3s per open tab, so the extra queries add up).
+     *
+     * @return array<string,mixed>|null null when the session has no batch row.
+     */
+    public function getUnifiedProgress(string $sessionId): ?array
+    {
+        $batch = $this->getBatchBySession($sessionId);
+        if ($batch === null) {
+            return null;
+        }
+
+        $status = (string) ($batch['status'] ?? '');
+        $staging = new ImportStagingTable();
+        $tally = $staging->tallyPhase2($sessionId);
+
+        // Legacy shape (getPhase2Progress contract).
+        $counts = [
+            'imported'     => $tally['succeeded'],
+            'failed'       => $tally['failed'],
+            'needs_review' => $tally['needs_review'],
+            'pending'      => $tally['pending'],
+        ];
+
+        // Live Phase 1 tally. Fold email_conflict + skipped_active_membership
+        // into needs_review exactly like BatchProcessor::tally and the review
+        // screen's summaryCounts so every surface reports the same numbers.
+        $summary = $staging->getImportSummary($sessionId);
+        $phase1 = [
+            'processed' => (int) ($summary['imported'] ?? 0) + (int) ($summary['updated'] ?? 0),
+            'failed' => (int) ($summary['failed'] ?? 0),
+            'needs_review' => (int) ($summary['needs_review'] ?? 0)
+                + (int) ($summary['email_conflict'] ?? 0)
+                + (int) ($summary['skipped_active_membership'] ?? 0),
+            'pending' => (int) ($summary['pending'] ?? 0),
+            'processing' => (int) ($summary['processing'] ?? 0),
+        ];
+
+        $live = in_array($status, ['pending', 'running', 'phase2_running'], true);
+        $stallSeconds = (int) apply_filters('wicket_import_stall_seconds', self::STALL_SECONDS);
+        $stallSeconds = max(60, $stallSeconds);
+
+        // Activity signal, UTC on every source: staging processed_at is
+        // stamped by utcNowMysql, and the phase-start columns are written with
+        // current_time('mysql', true). Null while terminal (no signal needed).
+        $lastActivity = null;
+        $stalledSeconds = null;
+        if ($live) {
+            $candidates = array_filter([
+                $staging->lastProcessedAt($sessionId),
+                $status === 'phase2_running' ? ($batch['phase2_started_at'] ?? null) : ($batch['phase1_started_at'] ?? null),
+            ]);
+            $lastActivity = $candidates !== [] ? max($candidates) : null;
+            if ($lastActivity !== null) {
+                $now = function_exists('wicket_time_get_utc_datetime')
+                    ? wicket_time_get_utc_datetime('now')->format('Y-m-d H:i:s')
+                    : gmdate('Y-m-d H:i:s');
+                $stalledSeconds = max(0, strtotime($now) - (int) strtotime($lastActivity));
+            }
+        }
+
+        return [
+            'batch_id' => (string) ($batch['batch_id'] ?? ''),
+            'status' => $status,
+            'counts' => $counts,
+            'total_rows' => (int) ($batch['phase1_total'] ?? $batch['csv_row_count'] ?? 0),
+            'phase' => $status === 'phase2_running' ? 2 : 1,
+            'phase1' => $phase1,
+            'is_stalled' => $live && $stalledSeconds !== null && $stalledSeconds >= $stallSeconds,
+            'stalled_seconds' => $stalledSeconds,
+            'last_activity_utc' => $lastActivity,
+        ];
+    }
+
+    /**
+     * Whether a pending Action Scheduler chunk action still exists for this
+     * session's batch. The kick path (WWID-2439) requires this to be false:
+     * as_schedule_single_action args are positional (batch_id, session_id,
+     * attempt), so a match is found by scanning pending chunk actions for the
+     * session id. Two tabs kicking the same stalled batch must not schedule a
+     * second concurrent chain - claimChunk's single-runner assumption is what
+     * the whole engine stands on.
+     */
+    public function hasPendingChunk(string $sessionId): bool
+    {
+        if (!function_exists('as_get_scheduled_actions') || !class_exists(\ActionScheduler_Store::class)) {
+            return false; // AS absent: nothing pending, and tests drive chunks synchronously.
+        }
+
+        $pending = \as_get_scheduled_actions([
+            'hook' => self::CHUNK_HOOK,
+            'status' => \ActionScheduler_Store::STATUS_PENDING,
+            'per_page' => 100,
+        ], 'OBJECT');
+
+        foreach ($pending as $action) {
+            $args = (array) $action->get_args();
+            if (in_array($sessionId, $args, true)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

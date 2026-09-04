@@ -58,9 +58,189 @@
 		bindRestartButton(page);
 		bindIndividualForm();
 		applyFrozenColumns();
+		bindBatchLiveStatus(page);
+		bindQueueCheckAll(page);
 		window.addEventListener('resize', applyFrozenColumns);
 		window.addEventListener('load', applyFrozenColumns);
 	});
+
+	/**
+	 * Live batch status (WWID-2439). The old review page rendered once and
+	 * left the user hitting reload (QA measured up to 12 per batch) to find
+	 * out whether a background Action Scheduler run had finished.
+	 *
+	 * While the wrapper carries data-batch-status of a live state, poll the
+	 * unified progress endpoint every 3s (matching the chunk cadence), move
+	 * the counts and progress bar in place, and reload ONCE when the batch
+	 * lands so the server-rendered tables paint the new state. A stalled run
+	 * (no staging activity past the threshold) swaps the spinner copy for a
+	 * resume banner backed by POST /kick, and drops to a slow poll so an
+	 * externally fixed chain still gets noticed.
+	 *
+	 * Terminal states never poll: the page is static truth again.
+	 */
+	function bindBatchLiveStatus(page) {
+		var status = page.dataset.batchStatus || '';
+		var sessionId = page.dataset.sessionId || '';
+		var LIVE = ['pending', 'running', 'phase2_running'];
+		var TERMINAL = ['pending_review', 'processing_complete', 'completed', 'failed', 'cleared', 'abandoned'];
+		var FAST_MS = 3000;
+		var SLOW_MS = 30000;
+		if (!sessionId || LIVE.indexOf(status) === -1 || !cfg.restRoot) {
+			return;
+		}
+
+		var url = cfg.restRoot + '/session/' + encodeURIComponent(sessionId) + '/progress';
+		var kickUrl = cfg.restRoot + '/session/' + encodeURIComponent(sessionId) + '/kick';
+		var bar = page.querySelector('.wicket-importer-progress');
+		var barFill = page.querySelector('.wicket-importer-progress__bar');
+		var barText = page.querySelector('.wicket-importer-progress__text');
+		var stateEl = page.querySelector('.wicket-importer-state');
+		var interval = FAST_MS;
+		var timer = null;
+		var reloading = false;
+
+		function stopPolling() {
+			if (timer) { window.clearInterval(timer); timer = null; }
+		}
+
+		function settledCount(p) {
+			if (p.status === 'phase2_running') {
+				var counts = p.counts || {};
+				return (counts.imported || 0) + (counts.failed || 0) + (counts.needs_review || 0);
+			}
+			var ph1 = p.phase1 || {};
+			return (ph1.processed || 0) + (ph1.failed || 0) + (ph1.needs_review || 0);
+		}
+
+		function renderStalled(p) {
+			var gate = page.querySelector('.wicket-importer-review-gate');
+			if (!gate || gate.querySelector('.wicket-importer-stalled')) { return; }
+			var box = document.createElement('div');
+			box.className = 'wicket-importer-stalled';
+			var msg = document.createElement('p');
+			msg.textContent = t('Processing has paused. The background worker has not advanced for a while.');
+			var btn = document.createElement('button');
+			btn.type = 'button';
+			btn.className = 'button';
+			btn.textContent = t('Resume processing');
+			btn.addEventListener('click', function() {
+				btn.disabled = true;
+				btn.textContent = t('Resuming…');
+				fetch(kickUrl, {
+					method: 'POST',
+					headers: { 'X-WP-Nonce': cfg.restNonce },
+					credentials: 'same-origin'
+				})
+					.then(toJson)
+					.then(function() {
+						box.remove();
+						interval = FAST_MS;
+						startPolling();
+					})
+					.catch(function(err) {
+						btn.disabled = false;
+						btn.textContent = t('Resume processing');
+						window.WicketImportShowNotice(err.message || t('The batch could not be resumed.'), 'error');
+					});
+			});
+			box.appendChild(msg);
+			box.appendChild(btn);
+			gate.insertBefore(box, gate.firstChild);
+		}
+
+		function tick() {
+			if (reloading) { return; }
+			fetch(url, {
+				headers: { 'X-WP-Nonce': cfg.restNonce },
+				credentials: 'same-origin'
+			})
+				.then(toJson)
+				.then(function(p) {
+					if (!p || !p.status) { return; }
+					if (TERMINAL.indexOf(p.status) !== -1) {
+						// One reload paints the server-rendered review state;
+						// the wrapper's data-batch-status ends the loop after it.
+						reloading = true;
+						stopPolling();
+						window.location.reload();
+						return;
+					}
+					if (stateEl) {
+						stateEl.textContent = humanState(p.status);
+					}
+					var ph1 = p.phase1 || {};
+					setCount('total', p.total_rows);
+					setCount('processed', ph1.processed);
+					setCount('failed', ph1.failed);
+					setCount('needs_review', ph1.needs_review);
+					var total = p.total_rows || 0;
+					var settled = Math.min(total, settledCount(p));
+					var pct = total > 0 ? Math.floor((settled / total) * 100) : 0;
+					if (barFill) { barFill.style.width = pct + '%'; }
+					if (bar) { bar.setAttribute('aria-valuenow', String(pct)); }
+					if (barText) {
+						barText.textContent = sprintf(t('%1$d of %2$d rows processed'), settled, total);
+					}
+					if (p.is_stalled) {
+						renderStalled(p);
+						if (interval !== SLOW_MS) {
+							interval = SLOW_MS;
+							stopPolling();
+							startPolling();
+						}
+					}
+				})
+				.catch(function() {
+					// A failed tick (nonce expiry, hiccup) is not fatal; keep the
+					// last known state on screen rather than reloading over the user.
+				});
+		}
+
+		function startPolling() {
+			stopPolling();
+			timer = window.setInterval(tick, interval);
+		}
+
+		startPolling();
+	}
+
+	/**
+	 * Queue "select all" (WWID-2439). Vanilla DOM: the plugin ships no jQuery,
+	 * so the header checkbox flips its row checkboxes with a change listener
+	 * instead of an inline handler.
+	 */
+	function bindQueueCheckAll(page) {
+		var master = page.querySelector('.wicket-importer-check-all');
+		if (!master) { return; }
+		master.addEventListener('change', function() {
+			page.querySelectorAll('.wicket-importer-batch-check').forEach(function(box) {
+				box.checked = master.checked;
+			});
+		});
+	}
+
+	function humanState(status) {
+		var map = {
+			pending: t('Queued'),
+			running: t('Creating orders (step 1)'),
+			pending_review: t('Ready for payment matching'),
+			phase2_running: t('Matching payments (step 2)'),
+			processing_complete: t('Completed, needs attention'),
+			completed: t('Completed'),
+			failed: t('Failed'),
+			cleared: t('Cancelled'),
+			abandoned: t('Cancelled')
+		};
+		return map[status] || status;
+	}
+
+	function setCount(key, value) {
+		var el = document.querySelector('[data-count="' + key + '"]');
+		if (el && typeof value === 'number') {
+			el.textContent = String(value);
+		}
+	}
 
 	/**
 	 * Frozen columns on the flagged-rows table (WWID-2253): Line + the first
@@ -307,17 +487,35 @@
 
 		// Cheque uploads are CSV-only: hide the member-only upload-type toggle
 		// (CSV / Manual Entry) while cheque is selected, restore it on member.
+		// WWID-2439: also swap the dropzone prompt and the template download per
+		// type. Before this, selecting "Cheque renewals" changed nothing: the
+		// template button still served member columns, so the downloaded file
+		// could not survive the cheque upload validation.
 		function bindImportTypeToggle() {
 			var radios = document.querySelectorAll('input[name="wicket_import_import_type"]');
 			if (!radios.length) { return; }
 			var uploadType = document.querySelector('.wicket-importer-upload-type');
+			var templateBtn = document.querySelector('.wicket-importer-template-btn');
+			var promptText = document.querySelector('.wicket-importer-dropzone-prompt-text');
+			var PROMPTS = {
+				member: t('Drop CSV file here, or click to browse'),
+				cheque: t('Drop the lockbox cheque file here, or click to browse')
+			};
 			function sync() {
 				var isCheque = getImportType() === 'cheque';
-				if (!uploadType) { return; }
-				uploadType.hidden = isCheque;
-				if (isCheque) {
-					var csvRadio = uploadType.querySelector('input[value="csv"]');
-					if (csvRadio) { csvRadio.checked = true; }
+				if (uploadType) {
+					uploadType.hidden = isCheque;
+					if (isCheque) {
+						var csvRadio = uploadType.querySelector('input[value="csv"]');
+						if (csvRadio) { csvRadio.checked = true; }
+					}
+				}
+				if (templateBtn) {
+					var perType = isCheque ? templateBtn.dataset.templateCheque : templateBtn.dataset.templateMember;
+					if (perType) { templateBtn.href = perType; }
+				}
+				if (promptText && PROMPTS[getImportType()]) {
+					promptText.textContent = PROMPTS[getImportType()];
 				}
 			}
 			radios.forEach(function(r) { r.addEventListener('change', sync); });

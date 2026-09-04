@@ -48,7 +48,22 @@ final class ChequeReviewPage
 
         $sessionId = sanitize_text_field(wp_unslash($_GET['session_id'] ?? ''));
 
-        echo '<div class="wicket-importer" data-screen="cheque-review">';
+        // WWID-2439: the wrapper carries the batch state so admin.js can start
+        // live polling without re-parsing the page. The queue view (no session)
+        // carries no state and never polls.
+        $wrapperAttrs = '';
+        if (preg_match(self::SESSION_ID_PATTERN, $sessionId) === 1) {
+            $batch = Plugin::get_instance()->BatchProcessor()->getBatchBySession($sessionId);
+            if ($batch !== null) {
+                $wrapperAttrs = sprintf(
+                    ' data-session-id="%s" data-batch-status="%s"',
+                    esc_attr($sessionId),
+                    esc_attr((string) ($batch['status'] ?? ''))
+                );
+            }
+        }
+
+        echo '<div class="wicket-importer" data-screen="cheque-review"' . $wrapperAttrs . '>';
 
         $this->renderPhase2Notice();
 
@@ -78,7 +93,7 @@ final class ChequeReviewPage
 
         $this->renderSummary($summary, $batch);
         $this->renderLogTable($rows);
-        $this->renderGate($batch, $sessionId);
+        $this->renderGate($batch, $sessionId, $summary);
         $this->renderExportLink($sessionId);
 
         echo '</div>';
@@ -126,9 +141,11 @@ final class ChequeReviewPage
     private function renderEmptyState(): void
     {
         /*
-         * No session picked: the tab doubles as the cheque queue. Pending
-         * batches (the actionable ones) float to the top; the rest read as
-         * history. Mirrors the Import History table columns so admins see one
+         * No session picked: the tab doubles as the cheque queue. WWID-2439:
+         * the single undifferentiated list read as a wall of identical rows,
+         * so the queue now splits by what the admin can DO (needs action vs
+         * in flight vs everything) and offers a bulk abandon for pile-ups.
+         * Mirrors the Import History table columns so admins see one
          * consistent shape across tabs.
          */
         global $wpdb;
@@ -137,13 +154,23 @@ final class ChequeReviewPage
         $perPage = 20;
         $paged = max(1, (int) ($_GET['paged'] ?? 1));
         $offset = ($paged - 1) * $perPage;
+        $view = sanitize_key(wp_unslash($_GET['batch_view'] ?? 'needs_action'));
+        if (!in_array($view, ['needs_action', 'in_progress', 'all'], true)) {
+            $view = 'needs_action';
+        }
 
-        $total = (int) $wpdb->get_var("SELECT COUNT(*) FROM {$batchesTable} WHERE import_flow = 'cheque' AND status NOT IN ('cleared', 'abandoned')");
+        $where = [
+            'needs_action' => "status IN ('pending_review', 'failed')",
+            'in_progress' => "status IN ('pending', 'running', 'phase2_running')",
+            'all' => "status NOT IN ('cleared', 'abandoned')",
+        ][$view];
+
+        $total = (int) $wpdb->get_var("SELECT COUNT(*) FROM {$batchesTable} WHERE import_flow = 'cheque' AND {$where}");
         $rows = $total > 0 ? $wpdb->get_results($wpdb->prepare(
             "SELECT session_id, status, csv_filename, csv_row_count, phase1_succeeded, phase1_failed, phase1_needs_review, phase2_total, phase2_succeeded, created_at
              FROM {$batchesTable}
              WHERE import_flow = 'cheque'
-               AND status NOT IN ('cleared', 'abandoned')
+               AND {$where}
              ORDER BY (status = 'pending_review') DESC, (status = 'phase2_running') DESC, id DESC
              LIMIT %d OFFSET %d",
             $perPage,
@@ -151,29 +178,43 @@ final class ChequeReviewPage
         )) : [];
 
         echo '<h2>' . esc_html__('Cheque batches', 'wicket-wp-importer') . '</h2>';
-        echo '<p class="description">' . esc_html__('Open a batch to review its Phase 1 results and run payment matching.', 'wicket-wp-importer') . '</p>';
+        echo '<p class="description">' . esc_html__('Open a batch to review its results and run payment matching.', 'wicket-wp-importer') . '</p>';
+
+        $this->renderQueueTabs($view);
+        $this->renderQueueNotice();
 
         if ($rows === []) {
-            echo '<p>' . esc_html__('No cheque batches yet. Upload a cheque renewal CSV from the Upload tab to start one.', 'wicket-wp-importer') . '</p>';
+            $empty = [
+                'needs_action' => __('Nothing needs action. A batch lands here when processing finishes and it has failed or needs-review rows.', 'wicket-wp-importer'),
+                'in_progress' => __('Nothing is processing right now.', 'wicket-wp-importer'),
+                'all' => __('No cheque batches yet. Upload a cheque renewal CSV from the Upload tab to start one.', 'wicket-wp-importer'),
+            ][$view];
+            echo '<p>' . esc_html($empty) . '</p>';
 
             return;
         }
 
-        $baseUrl = admin_url('admin.php?page=wicket-wp-importer&tab=cheque-review');
+        $baseUrl = admin_url('admin.php?page=wicket-wp-importer&tab=cheque-review&batch_view=' . $view);
         ?>
+		<form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
+		<input type="hidden" name="action" value="wicket_import_cheque_abandon_bulk">
+		<input type="hidden" name="batch_view" value="<?php echo esc_attr($view); ?>">
+		<?php wp_nonce_field('wicket_import_cheque_abandon_bulk', '_wpnonce'); ?>
 		<table class="wp-list-table widefat fixed striped wicket-importer-cheque-queue">
 			<thead>
 				<tr>
+					<td class="check-column"><input type="checkbox" class="wicket-importer-check-all" aria-label="<?php esc_attr_e('Select all batches', 'wicket-wp-importer'); ?>" /></td>
 					<th><?php esc_html_e('Started', 'wicket-wp-importer'); ?></th>
 					<th><?php esc_html_e('File', 'wicket-wp-importer'); ?></th>
 					<th><?php esc_html_e('Rows', 'wicket-wp-importer'); ?></th>
+					<th><?php esc_html_e('Status', 'wicket-wp-importer'); ?></th>
 					<th><?php esc_html_e('Progress', 'wicket-wp-importer'); ?></th>
 					<th><?php esc_html_e('Actions', 'wicket-wp-importer'); ?></th>
 				</tr>
 			</thead>
 			<tbody>
 				<?php foreach ($rows as $row) :
-                    $openUrl = $baseUrl . '&session_id=' . rawurlencode((string) $row->session_id);
+                    $openUrl = admin_url('admin.php?page=wicket-wp-importer&tab=cheque-review&session_id=') . rawurlencode((string) $row->session_id);
                     $progress = ImportAdminPage::progressLabel([
                         'status'              => (string) $row->status,
                         'phase1_succeeded'    => (int) $row->phase1_succeeded,
@@ -182,23 +223,33 @@ final class ChequeReviewPage
                         'phase2_total'        => (int) $row->phase2_total,
                         'phase2_succeeded'    => (int) $row->phase2_succeeded,
                     ]);
+                    $bulkable = in_array($row->status, ['pending', 'running', 'pending_review', 'failed'], true);
                     ?>
 					<tr>
+					<td><?php if ($bulkable) : ?><input class="wicket-importer-batch-check" type="checkbox" name="session_ids[]" value="<?php echo esc_attr((string) $row->session_id); ?>"><?php endif; ?></td>
 					<td><?php echo esc_html(mysql2date('Y-m-d H:i', $row->created_at)); ?></td>
 					<td><a href="<?php echo esc_url($openUrl); ?>"><?php echo esc_html($row->csv_filename ?: '—'); ?></a></td>
 					<td><?php echo esc_html((string) ((int) $row->csv_row_count)); ?></td>
+					<td><span class="wicket-importer-state"><?php echo esc_html(ImportAdminPage::statusLabel((string) $row->status)); ?></span></td>
 					<td><?php echo esc_html($progress); ?></td>
 					<td>
 						<?php if ($row->status === 'pending_review') : ?>
-							<a class="button button-small button-primary" href="<?php echo esc_url($openUrl); ?>"><?php esc_html_e('Start Phase 2', 'wicket-wp-importer'); ?></a>
+							<a class="button button-small button-primary" href="<?php echo esc_url($openUrl); ?>"><?php esc_html_e('Review', 'wicket-wp-importer'); ?></a>
 						<?php else : ?>
-							<a class="button button-small" href="<?php echo esc_url($openUrl); ?>"><?php esc_html_e('Open review', 'wicket-wp-importer'); ?></a>
+							<a class="button button-small" href="<?php echo esc_url($openUrl); ?>"><?php esc_html_e('Open', 'wicket-wp-importer'); ?></a>
 						<?php endif; ?>
 					</td>
-				</tr>
+					</tr>
 				<?php endforeach; ?>
 			</tbody>
 		</table>
+		<?php if ($view !== 'in_progress') : ?>
+		<div class="wicket-importer-bulkbar">
+			<button type="submit" class="button" onclick="return confirm('<?php echo esc_js(__('Abandon the selected batches? Rows and reports are kept for audit; created orders are left untouched.', 'wicket-wp-importer')); ?>');"><?php esc_html_e('Abandon selected', 'wicket-wp-importer'); ?></button>
+			<span class="description"><?php esc_html_e('Retire old test batches so the queue only shows live work.', 'wicket-wp-importer'); ?></span>
+		</div>
+		<?php endif; ?>
+		</form>
 		<?php
         $totalPages = (int) ceil($total / $perPage);
         if ($totalPages > 1) {
@@ -217,23 +268,152 @@ final class ChequeReviewPage
         }
     }
 
+    /**
+     * View tabs for the cheque queue (WWID-2439): what needs a decision,
+     * what is moving, everything. The old single list mixed finished work
+     * with live work, so a pile-up of done batches buried the one in flight.
+     */
+    private function renderQueueTabs(string $current): void
+    {
+        $tabs = [
+            'needs_action' => __('Needs action', 'wicket-wp-importer'),
+            'in_progress' => __('In progress', 'wicket-wp-importer'),
+            'all' => __('All', 'wicket-wp-importer'),
+        ];
+
+        echo '<ul class="subsubsub wicket-importer-queue-tabs">';
+        $last = (string) array_key_last($tabs);
+        foreach ($tabs as $slug => $label) {
+            $url = admin_url('admin.php?page=wicket-wp-importer&tab=cheque-review&batch_view=' . $slug);
+            printf(
+                '<li><a href="%1$s" class="%2$s">%3$s</a>%4$s</li> ',
+                esc_url($url),
+                $slug === $current ? 'current' : '',
+                esc_html($label),
+                $slug !== $last ? ' |' : ''
+            );
+        }
+        echo '</ul>';
+    }
+
+    /**
+     * One-time result notice after a bulk-abandon redirect.
+     */
+    private function renderQueueNotice(): void
+    {
+        $abandoned = absint($_GET['abandoned'] ?? 0);
+        if ($abandoned <= 0) {
+            return;
+        }
+        printf(
+            '<div class="notice notice-success is-dismissible"><p>%s</p></div>',
+            esc_html(sprintf(
+                /* translators: %d: number of batches. */
+                _n('%d batch abandoned.', '%d batches abandoned.', $abandoned, 'wicket-wp-importer'),
+                $abandoned
+            ))
+        );
+    }
+
+    /**
+     * admin-post handler for the queue's bulk abandon (WWID-2439). Runs each
+     * session through the SAME clearSession() guard the History button uses,
+     * so the clearable-status rules live in exactly one place. Unknown or
+     * non-clearable session ids are skipped and counted, never fatal.
+     */
+    public static function handleBulkAbandon(): void
+    {
+        if (!current_user_can('manage_options')) {
+            wp_die(esc_html__('You do not have permission to do this.', 'wicket-wp-importer'), 403);
+        }
+
+        check_admin_referer('wicket_import_cheque_abandon_bulk', '_wpnonce');
+
+        $raw = (array) wp_unslash($_POST['session_ids'] ?? []);
+        $ids = array_filter($raw, static fn ($id) => is_string($id) && preg_match('/^[0-9a-fA-F-]{36}$/', $id) === 1);
+        $ids = array_slice(array_unique($ids), 0, 100);
+
+        $abandoned = 0;
+        $processor = Plugin::get_instance()->BatchProcessor();
+        foreach ($ids as $sessionId) {
+            $result = $processor->clearSession((string) $sessionId, false);
+            if (!is_wp_error($result)) {
+                $abandoned++;
+            }
+        }
+
+        wp_safe_redirect(admin_url('admin.php?page=wicket-wp-importer&tab=cheque-review&abandoned=' . $abandoned));
+        exit;
+    }
+
     private function renderSummary(array $summary, array $batch): void
     {
         $c = self::summaryCounts($summary, $batch);
+        $status = (string) ($batch['status'] ?? '');
+        $total = $c['total'];
+        $settled = min($total, $c['processed'] + $c['failed'] + $c['needs_review']);
+        $live = in_array($status, ['pending', 'running'], true);
+
+        // Live-state summary (WWID-2439): swap the raw status token for the
+        // human state name, show real movement (bar + settled count), and say
+        // the page updates itself. admin.js keeps the numbers fresh via the
+        // progress endpoint and reloads once when the batch lands.
         $rows = [
-            __('Status', 'wicket-wp-importer') => esc_html((string) ($batch['status'] ?? '')),
-            __('Total rows', 'wicket-wp-importer') => esc_html((string) $c['total']),
-            __('Processed', 'wicket-wp-importer') => esc_html((string) $c['processed']),
-            __('Failed', 'wicket-wp-importer') => '<span class="review-count--failed">' . esc_html((string) $c['failed']) . '</span>',
-            __('Needs review', 'wicket-wp-importer') => '<span class="review-count--review">' . esc_html((string) $c['needs_review']) . '</span>',
+            'status' => [
+                'label' => __('Status', 'wicket-wp-importer'),
+                'value' => '<span class="wicket-importer-state">' . esc_html(ImportAdminPage::statusLabel($status)) . '</span>',
+            ],
+            'total' => [
+                'label' => __('Total rows', 'wicket-wp-importer'),
+                'value' => '<span data-count="total">' . esc_html((string) $total) . '</span>',
+            ],
+            'processed' => [
+                'label' => __('Processed', 'wicket-wp-importer'),
+                'value' => '<span data-count="processed">' . esc_html((string) $c['processed']) . '</span>',
+            ],
+            'failed' => [
+                'label' => __('Failed', 'wicket-wp-importer'),
+                'value' => '<span class="review-count--failed" data-count="failed">' . esc_html((string) $c['failed']) . '</span>',
+            ],
+            'needs_review' => [
+                'label' => __('Needs review', 'wicket-wp-importer'),
+                'value' => '<span class="review-count--review" data-count="needs_review">' . esc_html((string) $c['needs_review']) . '</span>',
+            ],
         ];
 
-        echo '<h2>' . esc_html__('Phase 1 review', 'wicket-wp-importer') . '</h2>';
+        $title = match (true) {
+            $live => __('Batch in progress', 'wicket-wp-importer'),
+            $status === 'phase2_running' => __('Payment matching in progress', 'wicket-wp-importer'),
+            in_array($status, ['processing_complete', 'completed'], true) => __('Reconciliation complete', 'wicket-wp-importer'),
+            $status === 'failed' => __('Batch failed', 'wicket-wp-importer'),
+            default => __('Phase 1 review', 'wicket-wp-importer'),
+        };
+
+        echo '<h2>' . esc_html($title) . '</h2>';
         echo '<table class="widefat striped wicket-importer-review-summary"><tbody>';
-        foreach ($rows as $label => $value) {
-            echo '<tr><th>' . esc_html($label) . '</th><td>' . $value . '</td></tr>';
+        foreach ($rows as $row) {
+            echo '<tr><th>' . esc_html($row['label']) . '</th><td>' . $row['value'] . '</td></tr>';
         }
         echo '</tbody></table>';
+
+        if ($live && $total > 0) {
+            $pct = (int) floor(($settled / $total) * 100);
+            printf(
+                '<div class="wicket-importer-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="%1$d">'
+                . '<div class="wicket-importer-progress__bar" style="width:%1$d%%"></div>'
+                . '<span class="wicket-importer-progress__text">%2$s</span>'
+                . '</div>'
+                . '<p class="description wicket-importer-live-note">%3$s</p>',
+                $pct,
+                esc_html(sprintf(
+                    /* translators: 1: settled rows, 2: total rows. */
+                    __('%1$d of %2$d rows processed', 'wicket-wp-importer'),
+                    $settled,
+                    $total
+                )),
+                esc_html(__('This page updates itself. You can leave it open or come back later.', 'wicket-wp-importer'))
+            );
+        }
     }
 
     private function renderLogTable(array $rows): void
@@ -252,48 +432,123 @@ final class ChequeReviewPage
         $table->display();
     }
 
-    private function renderGate(array $batch, string $sessionId): void
+    /**
+     * The action area under the review tables (WWID-2439 rewrite). The old
+     * version always rendered a Proceed button plus "the gate is armed"
+     * copy; internal state tokens leaked to non-technical staff and terminal
+     * batches kept showing a disabled button with no next step.
+     *
+     * Per state it now renders the one honest action (or none while the
+     * background work is still moving) with the numbers that matter.
+     */
+    private function renderGate(array $batch, string $sessionId, array $summary): void
     {
         $enabled = self::isGateEnabled($batch);
         $available = self::isPhase2Available();
         $status = (string) ($batch['status'] ?? '');
+        $c = self::summaryCounts($summary, $batch);
 
-        echo '<div class="wicket-importer-review-gate">';
-        echo '<form method="post" action="' . esc_url(admin_url('admin-post.php')) . '">';
-        echo '<input type="hidden" name="action" value="wicket_import_cheque_proceed">';
-        echo '<input type="hidden" name="session_id" value="' . esc_attr($sessionId) . '">';
-        wp_nonce_field('wicket_import_cheque_proceed', '_wpnonce');
+        echo '<div class="wicket-importer-review-gate wicket-importer-gate--' . esc_attr($status !== '' ? $status : 'unknown') . '">';
 
-        printf(
-            '<button type="submit" class="button button-primary"%s>%s</button>',
-            $enabled ? '' : ' disabled',
-            esc_html__('Proceed to Phase 2', 'wicket-wp-importer')
-        );
-        echo '</form>';
+        switch ($status) {
+            case 'pending':
+            case 'running':
+                printf(
+                    '<p class="description">%s</p>',
+                    esc_html(__('This batch is still processing. The page updates itself; payment matching unlocks when processing finishes.', 'wicket-wp-importer'))
+                );
+                break;
 
-        // Always explain the gate state. Two reasons it can be disabled:
-        //   1. Batch is not in pending_review (e.g. running, completed).
-        //   2. The site has not enabled Phase 2 via the wicket_import_phase2_enabled
-        //      filter (Phase 2 ships off by default; clients opt in).
-        echo '<p class="description">';
-        if (!$available) {
-            echo esc_html__('Phase 2 (payment matching) is disabled by site configuration; enable it from the client theme to arm this gate.', 'wicket-wp-importer');
-        } elseif (!$enabled) {
-            echo esc_html(sprintf(
-                /* translators: %s: batch status. */
-                __('The gate is armed only when the batch is pending_review. This batch is: %s.', 'wicket-wp-importer'),
-                $status === '' ? '—' : $status
-            ));
-        } else {
-            echo esc_html__('The gate is armed: a fresh batch in pending_review can be moved to Phase 2.', 'wicket-wp-importer');
+            case 'phase2_running':
+                printf(
+                    '<p class="description">%s</p>',
+                    esc_html(__('Payments are being matched to the orders now. The page updates itself.', 'wicket-wp-importer'))
+                );
+                break;
+
+            case 'pending_review':
+                echo '<form method="post" action="' . esc_url(admin_url('admin-post.php')) . '">';
+                echo '<input type="hidden" name="action" value="wicket_import_cheque_proceed">';
+                echo '<input type="hidden" name="session_id" value="' . esc_attr($sessionId) . '">';
+                wp_nonce_field('wicket_import_cheque_proceed', '_wpnonce');
+
+                printf(
+                    '<button type="submit" class="button button-primary"%s>%s</button>',
+                    $enabled ? '' : ' disabled',
+                    esc_html(__('Start payment matching', 'wicket-wp-importer'))
+                );
+                echo '</form>';
+
+                if (!$available) {
+                    printf(
+                        '<p class="description">%s</p>',
+                        esc_html(__('Payment matching (Phase 2) is turned off for this site. A site admin can enable it with the wicket_import_phase2_enabled filter.', 'wicket-wp-importer'))
+                    );
+                } else {
+                    printf(
+                        '<p class="description">%s</p>',
+                        esc_html(sprintf(
+                            /* translators: 1: processed rows, 2: failed rows, 3: needs-review rows. */
+                            __('Step 1 finished: %1$d orders created, %2$d failed, %3$d need review. Resolve the rows below if you can, then start payment matching.', 'wicket-wp-importer'),
+                            $c['processed'],
+                            $c['failed'],
+                            $c['needs_review']
+                        ))
+                    );
+                }
+                break;
+
+            case 'processing_complete':
+            case 'completed':
+                $matched = (int) ($batch['phase2_succeeded'] ?? 0);
+                $held = (int) ($batch['phase2_needs_review'] ?? 0) + (int) ($batch['phase2_failed'] ?? 0);
+                printf(
+                    '<p class="description">%s</p>',
+                    esc_html(sprintf(
+                        /* translators: 1: matched payments, 2: payments needing attention. */
+                        __('Payment matching finished. %1$d payments matched; %2$d need attention below.', 'wicket-wp-importer'),
+                        $matched,
+                        $held
+                    ))
+                );
+                printf(
+                    '<p><a class="button" href="%1$s">%2$s</a></p>',
+                    esc_url(admin_url('admin.php?page=wicket-wp-importer&tab=cheque-review')),
+                    esc_html(__('Back to cheque batches', 'wicket-wp-importer'))
+                );
+                break;
+
+            case 'failed':
+                printf(
+                    '<p class="description">%s</p>',
+                    esc_html(__('The batch failed while processing. Check the entries below, fix the source CSV, and upload it again.', 'wicket-wp-importer'))
+                );
+                break;
+
+            case 'cleared':
+            case 'abandoned':
+                printf(
+                    '<p class="description">%s</p>',
+                    esc_html(__('This batch was cancelled. Its history stays in Import History.', 'wicket-wp-importer'))
+                );
+                break;
+
+            default:
+                printf(
+                    '<p class="description">%s</p>',
+                    esc_html(__('The batch state is unknown. Reload this page, or open the batch again from Import History.', 'wicket-wp-importer'))
+                );
+                break;
         }
-        echo '</p>';
+
         echo '</div>';
     }
 
     private function renderExportLink(string $sessionId): void
     {
-        $url = rest_url('/wicket/v1/import/session/' . $sessionId . '/error-csv?context=cheque');
+        // The error CSV route derives the flow from the batch row (WWID-2441);
+        // no context param needed here.
+        $url = rest_url('/wicket/v1/import/session/' . $sessionId . '/error-csv');
         // Anchors cannot send the X-WP-Nonce header; bake it into the URL.
         $nonceUrl = wp_nonce_url($url, 'wp_rest', '_wpnonce');
 

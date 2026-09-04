@@ -298,7 +298,7 @@ class ImportAdminPage
 				>
 				<p class="wicket-importer-dropzone-prompt">
 					<span class="wicket-importer-dropzone-icon" aria-hidden="true">⬆</span><br>
-					<?php esc_html_e('Drop CSV file here, or click to browse', 'wicket-wp-importer'); ?>
+					<span class="wicket-importer-dropzone-prompt-text"><?php esc_html_e('Drop CSV file here, or click to browse', 'wicket-wp-importer'); ?></span>
 				</p>
 			</div>
 
@@ -327,7 +327,19 @@ class ImportAdminPage
 			</div>
 
 			<div class="wicket-importer-actions">
-				<a class="button wicket-importer-template-btn" href="<?php echo esc_url(wp_nonce_url($rest . '/template', 'wp_rest', '_wpnonce')); ?>">
+				<?php // WWID-2439: per-type template URLs; admin.js swaps the href
+				 // when the import type radio changes.
+				$templateMemberUrl = wp_nonce_url($rest . '/template', 'wp_rest', '_wpnonce');
+				$templateChequeUrl = wp_nonce_url(add_query_arg('type', 'cheque', $rest . '/template'), 'wp_rest', '_wpnonce');
+				?>
+				<a
+					class="button wicket-importer-template-btn"
+					href="<?php echo esc_url($templateMemberUrl); ?>"
+					data-template-member="<?php echo esc_url($templateMemberUrl); ?>"
+					<?php if ($chequeAvailable): ?>
+					data-template-cheque="<?php echo esc_url($templateChequeUrl); ?>"
+					<?php endif; ?>
+				>
 					<?php esc_html_e('Download CSV template', 'wicket-wp-importer'); ?>
 				</a>
 				<?php if ($sampleUrl !== ''): ?>
@@ -1284,7 +1296,7 @@ class ImportAdminPage
 						<option value=""><?php esc_html_e('Any', 'wicket-wp-importer'); ?></option>
 						<?php foreach (['pending', 'running', 'pending_review', 'phase2_running', 'processing_complete', 'completed', 'failed', 'cleared', 'abandoned'] as $opt) : ?>
 							<option value="<?php echo esc_attr($opt); ?>" <?php selected($status, $opt); ?>>
-								<?php echo esc_html(ucfirst($opt)); ?>
+								<?php echo esc_html(self::statusLabel($opt)); ?>
 							</option>
 						<?php endforeach; ?>
 					</select>
@@ -1351,7 +1363,15 @@ class ImportAdminPage
 						    ]);
 						    $started = mysql2date('Y-m-d H:i', $row->created_at);
 						    $finished = $row->finished_at ? mysql2date('Y-m-d H:i', $row->finished_at) : '—';
-						    $duration = self::formatDuration((string) $row->created_at, (string) $row->finished_at);
+						    // WWID-2439: duration is RUN time. A batch counts as ran when the
+						    // AS path stamped phase1_completed_at OR phase tallies settled
+						    // (the inline member path never writes phase1_completed_at, so
+						    // the column alone would blank every member run). Cleared before
+						    // run: no stamp, nothing settled, em dash instead of a 26-hour
+						    // time-to-cleanup.
+						    $ran = $row->phase1_completed_at !== null
+						        || ((int) $row->phase1_succeeded + (int) $row->phase1_failed + (int) $row->phase1_needs_review) > 0;
+						    $duration = $ran ? self::formatDuration((string) $row->created_at, (string) $row->finished_at) : '—';
 						    ?>
 							<tr>
 								<td><?php echo esc_html($started); ?></td>
@@ -1361,7 +1381,7 @@ class ImportAdminPage
 									</a>
 								</td>
 								<td><?php echo esc_html($row->user_display_name ?: '—'); ?></td>
-								<td><?php echo esc_html($row->status); ?></td>
+								<td><span class="wicket-importer-state"><?php echo esc_html(self::statusLabel((string) $row->status)); ?></span></td>
 								<td><?php echo esc_html((string) ((int) $row->csv_row_count)); ?></td>
 								<td><?php echo esc_html($progress); ?></td>
 								<td><?php echo esc_html($duration); ?></td>
@@ -1416,6 +1436,33 @@ class ImportAdminPage
 			<?php endif; ?>
 		</div>
 		<?php
+    }
+
+    /**
+     * Human name for a batch status (WWID-2439). Raw DB tokens ("running",
+     * "pending_review") leaked internals to non-technical staff; this is the
+     * single dictionary every surface (History status cell, review page,
+     * queue) renders instead. Pure so the unit suite covers it. The paired
+     * progressLabel() carries the per-row sentence; this names the state.
+     *
+     * @param array<string,mixed>|string $batch Batch row or raw status string.
+     */
+    public static function statusLabel(array|string $batch): string
+    {
+        $status = is_string($batch) ? $batch : (string) ($batch['status'] ?? '');
+
+        return match ($status) {
+            'pending' => __('Queued', 'wicket-wp-importer'),
+            'running' => __('Creating orders (step 1)', 'wicket-wp-importer'),
+            'pending_review' => __('Ready for payment matching', 'wicket-wp-importer'),
+            'phase2_running' => __('Matching payments (step 2)', 'wicket-wp-importer'),
+            'processing_complete' => __('Completed, needs attention', 'wicket-wp-importer'),
+            'completed' => __('Completed', 'wicket-wp-importer'),
+            'failed' => __('Failed', 'wicket-wp-importer'),
+            'cleared' => __('Cancelled', 'wicket-wp-importer'),
+            'abandoned' => __('Cancelled', 'wicket-wp-importer'),
+            default => $status !== '' ? ucfirst($status) : __('Unknown', 'wicket-wp-importer'),
+        };
     }
 
     /**

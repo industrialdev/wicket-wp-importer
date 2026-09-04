@@ -80,9 +80,15 @@ final class ReviewLogTable extends \WP_List_Table
             case 'status':
                 return $this->renderStatusBadge((string) $value);
             case 'order_id':
-                return $value !== '' && $value !== null
-                    ? '<code>' . esc_html((string) $value) . '</code>'
-                    : '<span aria-hidden="true">&mdash;</span>';
+                // WWID-2439: link straight to the order edit screen (HPOS
+                // route) so the admin can act on a held/failed order without
+                // copy-pasting the id into a search box.
+                if ($value === '' || $value === null) {
+                    return '<span aria-hidden="true">&mdash;</span>';
+                }
+                $orderUrl = admin_url('admin.php?page=wc-orders&action=edit&id=' . rawurlencode((string) $value));
+
+                return '<a href="' . esc_url($orderUrl) . '"><code>' . esc_html((string) $value) . '</code></a>';
             case 'data':
                 // Already shaped into a readable string by the controller.
                 return esc_html((string) $value);

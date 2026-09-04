@@ -43,6 +43,24 @@ class Assets
         }
 
         /*
+         * WWID-2439: foreign plugin notices (WooCommerce Subscriptions
+         * duplicate-site nag, ACF warnings, Account Centre prompts) pushed the
+         * upload form below four full-height banners and bury every importer
+         * screen. The importer renders its own inline notices, so generic
+         * admin_notices add noise only here. Scoped to the importer screens;
+         * the rest of wp-admin is untouched. Fires from admin_enqueue_scripts,
+         * which runs before admin-header prints the notices.
+         *
+         * The wipe also catches THIS plugin's own DB-drift notice (hooked in
+         * plugin_setup), so it is re-added right after: an admin sitting on an
+         * importer screen is exactly who needs to see schema drift.
+         */
+        if ($isImporterPage) {
+            remove_all_actions('admin_notices');
+            add_action('admin_notices', [BulkImport\Database\DbInstaller::class, 'maybeRenderDriftNotice']);
+        }
+
+        /*
          * Cache-bust by file mtime, not the plugin version: the admin JS/CSS
          * can change between releases (branch builds, hotfixes synced to a
          * client), and a same-version asset URL keeps serving the stale file

@@ -120,6 +120,14 @@ final class UploadController
             'callback'            => [$this, 'handleProgress'],
             'permission_callback' => $permission,
         ]);
+        // WWID-2439: re-arm a stalled Phase 1 chain (wp-cron missed the next
+        // chunk). Refuses non-stalled batches so a live chain can never get a
+        // second, concurrent chunk scheduled.
+        register_rest_route($namespace, $sessionBase . '/kick', [
+            'methods'             => 'POST',
+            'callback'            => [$this, 'handleKick'],
+            'permission_callback' => $permission,
+        ]);
         register_rest_route($namespace, $sessionBase . '/retry', [
             'methods'             => 'POST',
             'callback'            => [$this, 'handleRetry'],
@@ -546,7 +554,12 @@ final class UploadController
      */
     public function handleTemplate(): never
     {
-        $columns = $this->resolveColumns();
+        // WWID-2439: ?type=cheque serves the lockbox column set. The upload
+        // screen swaps the template button per import type; before this, a
+        // user who selected "Cheque renewals" and downloaded "the template"
+        // got the member columns and uploaded a file the cheque flow rejects.
+        $type = isset($_GET['type']) ? sanitize_key(wp_unslash($_GET['type'])) : '';
+        $columns = $type === 'cheque' ? $this->resolveChequeColumns() : $this->resolveColumns();
         $headers = [];
         foreach ($columns as $column) {
             $headers[] = $column->label !== '' ? $column->label : $column->key;
@@ -887,15 +900,18 @@ final class UploadController
     }
 
     /**
-     * GET /import/session/{id}/progress (Slice 5) — return the Phase 2 batch
-     * status + per-status row counts for the admin UI to render a live view.
+     * GET /import/session/{id}/progress (Slice 5; widened by WWID-2439) —
+     * live batch status + per-phase row counts so the admin UI can render a
+     * live view instead of a static page the user must reload. Superset of
+     * the original Phase 2-only shape: legacy keys are unchanged, Phase 1
+     * tallies + stall signal are additive.
      *
      * @return WP_REST_Response|WP_Error
      */
     public function handleProgress(WP_REST_Request $request)
     {
         $sessionId = (string) ($request['id'] ?? '');
-        $progress = Plugin::get_instance()->BatchProcessor()->getPhase2Progress($sessionId);
+        $progress = Plugin::get_instance()->BatchProcessor()->getUnifiedProgress($sessionId);
         if ($progress === null) {
             return $this->error(
                 'phase2_batch_not_found',
@@ -910,6 +926,59 @@ final class UploadController
         $progress['enabled'] = \WicketImporter\Admin\ChequeReviewPage::isPhase2Available();
 
         return new WP_REST_Response($progress, 200);
+    }
+
+    /**
+     * POST /import/session/{id}/kick (WWID-2439) — re-arm the Phase 1 chunk
+     * chain when the stall detector says it died (wp-cron miss). Guarded on
+     * is_stalled so an in-flight chain is never doubled up: claimChunk assumes
+     * a single runner per batch.
+     *
+     * @return WP_REST_Response|WP_Error
+     */
+    public function handleKick(WP_REST_Request $request)
+    {
+        $sessionId = (string) ($request['id'] ?? '');
+        $progress = Plugin::get_instance()->BatchProcessor()->getUnifiedProgress($sessionId);
+        if ($progress === null) {
+            return $this->error(
+                'batch_not_found',
+                __('No batch found for this session.', 'wicket-wp-importer'),
+                404
+            );
+        }
+
+        if (($progress['status'] ?? '') !== 'running' || empty($progress['is_stalled'])) {
+            return $this->error(
+                'batch_not_stalled',
+                __('Only a stalled batch can be resumed. This batch is still processing.', 'wicket-wp-importer'),
+                409
+            );
+        }
+
+        // Refuse when a chunk action is already queued: a second kick (two
+        // tabs, a retried fetch) would schedule a second concurrent chain and
+        // break claimChunk's single-runner assumption. The stall signal is
+        // minutes old by definition, so a live pending action means someone
+        // (or wp-cron) beat us to the reschedule already.
+        if (Plugin::get_instance()->BatchProcessor()->hasPendingChunk($sessionId)) {
+            return $this->error(
+                'kick_already_pending',
+                __('A resume is already queued for this batch. The page will pick it up on the next check.', 'wicket-wp-importer'),
+                409
+            );
+        }
+
+        $batchId = Plugin::get_instance()->BatchProcessor()->startChainOnUploadBatch($sessionId);
+        if ($batchId === null) {
+            return $this->error(
+                'kick_failed',
+                __('The batch could not be resumed. Clear it from Import History and re-upload the CSV.', 'wicket-wp-importer'),
+                409
+            );
+        }
+
+        return new WP_REST_Response(['session_id' => $sessionId, 'batch_id' => $batchId, 'kicked' => true], 200);
     }
 
     /**
