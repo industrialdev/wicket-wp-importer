@@ -42,6 +42,11 @@ final class ReviewSuggester
         if ($reason !== '' && str_contains($reason, 'no member or membership')) {
             return __('Verify the member identifier exists on this site and the member has an active membership.', 'wicket-wp-importer');
         }
+        // D3 dedup skip: the row already names its blocking order; the Review
+        // table links it from the Reason column (WWID-2437 follow-up).
+        if ($reason !== '' && str_contains($reason, 'existing on hold order')) {
+            return __('Cancel the blocking On Hold order to allow this row to import, then re-upload it.', 'wicket-wp-importer');
+        }
         if ($reason !== '' && str_contains($reason, 'product resolution')) {
             return __('Check the tier succession map and the product mappings.', 'wicket-wp-importer');
         }

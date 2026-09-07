@@ -197,23 +197,29 @@ final class BatchProcessor
      * Guard: sessions with no batch row yet (uploaded + validated, never
      * run — the validation screen's Restart Upload case), pending (staged,
      * not started), running (run in flight or stuck), pending_review (Phase
-     * 1 done, human gate), and failed batches whose Phase 2 never started
+     * 1 done, human gate), failed batches whose Phase 2 never started
      * (a reschedule-cap abort lands there with rows still pending, which
-     * block uploads forever — the stuck-batch case WWID-2437 exists for) are
-     * clearable. Once Phase 2 starts the run moves money (On Hold ->
+     * block uploads forever — the stuck-batch case WWID-2437 exists for),
+     * and abandoned batches whose Phase 2 never started (re-clear exists
+     * only to cancel the orders Phase 1 left behind, WWID-2437 follow-up)
+     * are clearable. Once Phase 2 starts the run moves money (On Hold ->
      * processing) and Action Scheduler chunks may be mid-flight, so those
      * states are refused.
      *
-     * Audit policy: pre-run states (pending/running) never wrote durable
-     * work, so their staged rows + source CSV are deleted as before. A
-     * pending_review batch already created memberships/orders in Phase 1, so
-     * its rows and CSV are KEPT: the batches row lands in `abandoned` and the
-     * staged rows stay as the per-row record of what touched Woo. A failed
-     * batch keeps its CSV but its still-pending rows are flipped to
-     * 'expired' in place: they were never claimed, and pending rows are what
-     * hasActiveSession() counts, so keeping them pending would keep blocking
-     * uploads. Retained rows never block new uploads and the TTL cron
-     * expires 'pending' rows only, so nothing rots.
+     * Audit policy: only a truly pre-run state ('pending', nothing ever
+     * claimed) deletes its staged rows + source CSV. Everything else may
+     * have written durable Woo work, so its rows and CSV are KEPT: the
+     * batches row lands in `abandoned` and the staged rows stay as the
+     * per-row record of what touched Woo. This includes a 'running' clear
+     * (WWID-2437 follow-up: Action Scheduler chunks write order_id onto
+     * rows while the batch is still 'running', so prerun-deleting a running
+     * batch orphaned those orders On Hold forever, with no recovery path —
+     * the abandoned batch's cleanup is that recovery). Still-pending rows
+     * of kept batches are flipped to 'expired' in place: they were never
+     * claimed, and pending rows are what hasActiveSession() counts, so
+     * keeping them pending would keep blocking uploads. Retained rows never
+     * block new uploads and the TTL cron expires 'pending' rows only, so
+     * nothing rots.
      *
      * When $cleanupOrders is true (opt-in checkbox), every order this session
      * created that is still On Hold is cancelled together with its stored
@@ -224,7 +230,7 @@ final class BatchProcessor
      * cron, while a cancelled order stays auditable and still falls out of
      * the On Hold dedup query.
      *
-     * @return array{status: string, rows_deleted: bool, orders_cancelled: int, subscriptions_cancelled: int, orders_skipped: int}|WP_Error
+     * @return array{status: string, rows_deleted: bool, orders_cancelled: int, subscriptions_cancelled: int, orders_skipped: int, orders_remaining: int}|WP_Error
      */
     public function clearSession(string $sessionId, bool $cleanupOrders = false)
     {
@@ -236,20 +242,30 @@ final class BatchProcessor
         $phase2Started = ($batch['phase2_started_at'] ?? null) !== null;
         if ($status !== ''
             && !in_array($status, ['pending', 'running', 'pending_review'], true)
-            && !($status === 'failed' && !$phase2Started)) {
+            && !($status === 'failed' && !$phase2Started)
+            && !($status === 'abandoned' && !$phase2Started)) {
             return new WP_Error(
                 'batch_not_clearable',
                 sprintf(
-                    'Only pending, running, pending_review, or failed-before-Phase-2 batches can be cleared; this batch is "%s".',
+                    'Only pending, running, pending_review, failed-before-Phase-2, or abandoned-before-Phase-2 batches can be cleared; this batch is "%s".',
                     $status !== '' ? $status : 'unknown'
                 )
             );
         }
 
         $fromStatus = $status !== '' ? $status : 'pending';
-        // failed-without-Phase-2 may have written orders in Phase 1, so it
-        // shares the pending_review audit branch: keep rows, land 'abandoned'.
-        $prerun = !in_array($fromStatus, ['pending_review', 'failed'], true);
+        // Only a truly pre-run state deletes rows: 'pending' never claimed a
+        // row nor wrote Woo work. failed-without-Phase-2 shares the
+        // pending_review audit branch (it may have written orders in Phase
+        // 1), and so do 'running' (mid-run orders from settled chunks) and
+        // 'abandoned' (re-clear keeps the audit record).
+        $prerun = $fromStatus === 'pending';
+        // An abandoned re-clear exists only to cancel what Phase 1 left
+        // behind (its form carries no checkbox), so cleanup is forced, not
+        // opt-in.
+        if ($fromStatus === 'abandoned') {
+            $cleanupOrders = true;
+        }
 
         $ordersCancelled = 0;
         $subscriptionsCancelled = 0;
@@ -267,7 +283,7 @@ final class BatchProcessor
             (new ImportStagingTable())->deleteSession($sessionId);
             CsvStorage::delete($sessionId);
             $rowsDeleted = true;
-        } elseif ($fromStatus === 'failed') {
+        } elseif (in_array($fromStatus, ['failed', 'running', 'abandoned'], true)) {
             (new ImportStagingTable())->expireSessionPendingRows($sessionId);
         }
 
@@ -286,7 +302,36 @@ final class BatchProcessor
             'orders_cancelled'        => $ordersCancelled,
             'subscriptions_cancelled' => $subscriptionsCancelled,
             'orders_skipped'          => $ordersSkipped,
+            'orders_remaining'        => $prerun ? 0 : $this->countRemainingOnHoldOrders($sessionId),
         ];
+    }
+
+    /**
+     * Orders this session created that are still On Hold: exactly the D3
+     * dedup scope, and what an abandon without the cleanup checkbox leaves
+     * behind (WWID-2437 follow-up success notice).
+     */
+    private function countRemainingOnHoldOrders(string $sessionId): int
+    {
+        if (!function_exists('wc_get_order')) {
+            return 0; // WooCommerce absent: nothing durable to count.
+        }
+
+        $remaining = 0;
+        $seen = [];
+        foreach ((new ImportStagingTable())->getBySession($sessionId) as $row) {
+            $orderId = (int) ($row['order_id'] ?? 0);
+            if ($orderId <= 0 || isset($seen[$orderId])) {
+                continue;
+            }
+            $seen[$orderId] = true;
+            $order = wc_get_order($orderId);
+            if ($order instanceof \WC_Order && $order->get_status() === 'on-hold') {
+                $remaining++;
+            }
+        }
+
+        return $remaining;
     }
 
     /**

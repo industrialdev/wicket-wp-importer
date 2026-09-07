@@ -501,10 +501,13 @@ final class UploadController
      * DELETE /import/session/{id} — clear the session.
      *
      * Funneled through the same BatchProcessor::clearSession guard as the
-     * History admin-post handler (WWID-2437): only pending, running, and
-     * pending_review batches are clearable, so a hand-built call can no
-     * longer wipe a Phase 2/completed batch's audit trail. The validation
-     * screen's "Restart Upload" button keeps working for clearable states.
+     * History admin-post handler (WWID-2437): only pending, running,
+     * pending_review, failed-before-Phase-2, and abandoned-before-Phase-2
+     * batches are clearable, so a hand-built call can no longer wipe a
+     * Phase 2/completed batch's audit trail. The validation screen's
+     * "Restart Upload" button keeps working for clearable states. Cleanup
+     * stays opt-in-never here (REST has no checkbox); an abandoned re-clear
+     * forces it engine-side.
      *
      * @return WP_REST_Response
      */

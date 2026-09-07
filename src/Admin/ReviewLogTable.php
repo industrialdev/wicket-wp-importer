@@ -93,6 +93,19 @@ final class ReviewLogTable extends \WP_List_Table
                 // Already shaped into a readable string by the controller.
                 return esc_html((string) $value);
             case 'reason':
+                $reasonText = esc_html((string) $value);
+                // WWID-2437 follow-up: a D3 skip names the blocking order in
+                // its text but carries no order_id of its own (the row never
+                // created one, so the Order ID column renders a dash). Link
+                // the named order so the human can act instead of
+                // copy-pasting the number into a search box.
+                if (preg_match('/Existing On Hold order #(\d+) for this member/i', (string) $value, $m)) {
+                    $blockingUrl = admin_url('admin.php?page=wc-orders&action=edit&id=' . rawurlencode($m[1]));
+                    $reasonText .= '<br><a href="' . esc_url($blockingUrl) . '">'
+                        . esc_html(sprintf(__('Open order #%s', 'wicket-wp-importer'), $m[1]))
+                        . '</a>';
+                }
+                return $reasonText;
             case 'fix':
             case 'line':
             default:
