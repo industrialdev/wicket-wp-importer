@@ -1408,32 +1408,17 @@ class ImportAdminPage
 										<?php
 										$rowStatus = (string) $row->status;
 										$rowOrders = self::rowCreatedOrderCount($row);
-										if ($rowOrders > 0) {
-											// WWID-2437 follow-up: warn BEFORE the abandon
-											// runs: the list form carries no cleanup checkbox,
-											// so orders stay On Hold unless the admin uses the
-											// batch page.
-											$rowConfirm = sprintf(
-												/* translators: %d: created order count. */
-												__('This batch created %1$d order(s), still on hold for payment. Abandoning here leaves them on hold. Open the batch to cancel them, or abandon anyway.', 'wicket-wp-importer'),
-												$rowOrders
-											);
-										} elseif (in_array($rowStatus, ['pending_review', 'failed'], true)) {
-											$rowConfirm = __('Abandon this batch? It can no longer be run; rows and reports are kept for audit. Order cleanup is available on the batch page.', 'wicket-wp-importer');
-										} else {
-											$rowConfirm = __('Clear this session? The staged rows will be deleted and the import can no longer be run.', 'wicket-wp-importer');
-										}
 										?>
 										<form
 											method="post"
 											action="<?php echo esc_url(admin_url('admin-post.php')); ?>"
 											class="wicket-importer-clear-session-form"
-											onsubmit="return confirm('<?php echo esc_js($rowConfirm); ?>');"
+											onsubmit="return confirm('<?php echo esc_js(self::clearConfirmText($rowStatus, $rowOrders)); ?>');"
 										>
 											<input type="hidden" name="action" value="wicket_import_clear_session">
 											<input type="hidden" name="batch_id" value="<?php echo esc_attr($row->batch_id); ?>">
 											<?php wp_nonce_field('wicket_import_clear_session', '_wpnonce'); ?>
-											<button type="submit" class="button button-link-delete"><?php echo esc_html(in_array($rowStatus, ['pending_review', 'failed'], true) ? __('Abandon batch', 'wicket-wp-importer') : __('Clear session', 'wicket-wp-importer')); ?></button>
+											<button type="submit" class="button button-link-delete"><?php echo esc_html(self::clearButtonLabel($rowStatus)); ?></button>
 										</form>
 									<?php else : ?>
 										<?php if (in_array($row->status, ['pending_review', 'phase2_running', 'processing_complete'], true)) : ?>
@@ -1657,6 +1642,56 @@ class ImportAdminPage
     }
 
     /**
+     * Confirm wording for a clear/abandon form, keyed off the SAME status
+     * predicate the engine uses (BatchProcessor::clearSession: only a
+     * 'pending' clear deletes rows). Deriving both surfaces from one helper
+     * is the WWID-2437 peer-review fix: a 'running' confirm used to claim
+     * rows would be deleted when the engine now keeps them.
+     *
+     * $orderCount: created orders for the batch (0 = none / pre-run).
+     */
+    private static function clearConfirmText(string $status, int $orderCount): string
+    {
+        // Order-aware warning. Never for the abandoned re-clear: that path
+        // cancels the orders instead of leaving them behind.
+        if ($orderCount > 0 && $status !== 'abandoned') {
+            return sprintf(
+                /* translators: %d: created order count. */
+                __('This batch created %1$d order(s), still on hold for payment. Abandoning here leaves them on hold. Open the batch to cancel them, or abandon anyway.', 'wicket-wp-importer'),
+                $orderCount
+            );
+        }
+
+        return match ($status) {
+            // The re-clear's only job is cancelling what Phase 1 left behind;
+            // the engine forces cleanup here (no checkbox), so the wording
+            // carries the same caveat as the opt-in checkbox label.
+            'abandoned' => sprintf(
+                /* translators: %d: created order count. */
+                __("Cancel this batch's created orders that are still On Hold (%1$d order(s) total; only On Hold ones are cancelled), with their subscriptions? Rows and reports stay for audit.", 'wicket-wp-importer'),
+                $orderCount
+            ),
+            'running' => __('Stop this import? The batch is abandoned: rows are kept for audit, it can no longer be run, and new uploads are unblocked.', 'wicket-wp-importer'),
+            'pending' => __('Clear this session? The staged rows will be deleted and the import can no longer be run.', 'wicket-wp-importer'),
+            default => __('Abandon this batch? It can no longer be run; rows and reports are kept for audit.', 'wicket-wp-importer'),
+        };
+    }
+
+    /**
+     * Submit label for a clear/abandon form, keyed off the same status the
+     * confirm text uses (single source, WWID-2437 peer review).
+     */
+    private static function clearButtonLabel(string $status): string
+    {
+        return match ($status) {
+            'pending_review', 'failed' => __('Abandon batch', 'wicket-wp-importer'),
+            'abandoned' => __('Clean up orders', 'wicket-wp-importer'),
+            'running' => __('Stop import', 'wicket-wp-importer'),
+            default => __('Clear session', 'wicket-wp-importer'),
+        };
+    }
+
+    /**
      * Per-batch detail (drill-down). Header summary + paginated per-row
      * staged_records table.
      */
@@ -1757,26 +1792,12 @@ class ImportAdminPage
 					$cleanupCount = $cleanupEligible
 						? Plugin::get_instance()->StagingTable()->countCreatedOrders((string) $batch->session_id)
 						: 0;
-					if ($abandonedReClear) {
-						// The re-clear's only job is cancelling what Phase 1 left
-						// behind; the engine forces cleanup on this path (no
-						// checkbox here), so the confirm states the consequence.
-						$confirmText = sprintf(
-							/* translators: %d: created order count. */
-							__('Cancel the %1$d On Hold order(s) this batch created? Their subscriptions are cancelled too. Rows and reports stay for audit.', 'wicket-wp-importer'),
-							$cleanupCount
-						);
-						$buttonLabel = __('Clean up orders', 'wicket-wp-importer');
-					} elseif (in_array($batchStatus, ['pending_review', 'failed'], true)) {
-						// WWID-2437 follow-up: make the opt-in explicit instead of
-						// implicit in which checkbox the admin noticed.
-						$confirmText = $cleanupCount > 0
-							? __('Abandon this batch? Rows and reports stay for audit. Orders are NOT included unless you check the box below.', 'wicket-wp-importer')
-							: __('Abandon this batch? It can no longer be run; rows and reports are kept for audit.', 'wicket-wp-importer');
-						$buttonLabel = __('Abandon batch', 'wicket-wp-importer');
-					} else {
-						$confirmText = __('Clear this session? The staged rows will be deleted and the import can no longer be run.', 'wicket-wp-importer');
-						$buttonLabel = __('Clear session', 'wicket-wp-importer');
+					$confirmText = self::clearConfirmText($batchStatus, $cleanupCount);
+					// Detail-only override: the opt-in checkbox lives on this page,
+					// so for a pending_review/failed abandon with orders the wording
+					// can be explicit about what the checkbox changes.
+					if (!$abandonedReClear && in_array($batchStatus, ['pending_review', 'failed'], true) && $cleanupCount > 0) {
+						$confirmText = __('Abandon this batch? Rows and reports stay for audit. Orders are NOT included unless you check the box below.', 'wicket-wp-importer');
 					}
 					?>
 					<form
@@ -1797,7 +1818,7 @@ class ImportAdminPage
 								)); ?>
 							</label>
 						<?php endif; ?>
-						<button type="submit" class="button button-link-delete"><?php echo esc_html($buttonLabel); ?></button>
+						<button type="submit" class="button button-link-delete"><?php echo esc_html(self::clearButtonLabel($batchStatus)); ?></button>
 					</form>
 				<?php endif; ?>
 			</div>

@@ -515,6 +515,22 @@ final class UploadController
     {
         $sessionId = (string) ($request['id'] ?? '');
 
+        // WWID-2437 peer review: an abandoned re-clear FORCES the order
+        // cleanup engine-side (that is its only job in the admin UI). A
+        // machine-facing DELETE must not inherit that force silently: it
+        // cancels real On Hold orders + subscriptions. Demand an explicit
+        // confirmation flag before the destructive path.
+        $batch = Plugin::get_instance()->BatchProcessor()->getBatchBySession($sessionId);
+        if (($batch['status'] ?? '') === 'abandoned'
+            && ($batch['phase2_started_at'] ?? null) === null
+            && empty($request['confirm_cleanup'])) {
+            return $this->error(
+                'cleanup_confirmation_required',
+                __('This session was abandoned while its created orders are still On Hold. Re-run the delete with confirm_cleanup=true to cancel them (only On Hold orders are cancelled, with their subscriptions).', 'wicket-wp-importer'),
+                409
+            );
+        }
+
         $result = Plugin::get_instance()->BatchProcessor()->clearSession($sessionId);
         if (is_wp_error($result)) {
             return $this->error(
