@@ -5,6 +5,12 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 <!-- new releases inserted below this line -->
 
+## [1.0.53] - 2026-09-07
+
+### Fixed
+- **cheque:** order cleanup recovery + D3 order links (WWID-2437)
+
+
 ## [1.0.52] - 2026-09-04
 
 ### Fixed
