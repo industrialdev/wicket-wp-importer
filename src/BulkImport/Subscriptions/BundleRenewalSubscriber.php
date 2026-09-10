@@ -15,7 +15,7 @@ use WicketImporter\Services\Logger;
  * and delegates to the Phase 4 resolver chain. Adding a resolver = adding a
  * method here; the resolver classes themselves stay free of WP add_filter noise.
  *
- * Filter #2 (wicket_mship_bundle_renewal_member_tier_product) -> TierResolver.
+ * Filter #2 (wicket_mship_bundle_renewal_charge_tier_product) -> TierResolver.
  * Filter #3 (wicket_mship_bundle_renewal_line_item_price) -> MappingResolver
  * (wired when MappingResolver ships; left as a documented TODO until then).
  */
@@ -30,8 +30,8 @@ final class BundleRenewalSubscriber
         $this->tierResolver = new TierResolver($logger);
         $this->mappingResolver = new MappingResolver($logger);
 
-        // Filter #2: tier/product override. 6 args = override value + 5 context args.
-        add_filter('wicket_mship_bundle_renewal_member_tier_product', [$this, 'resolveRenewalTierProduct'], 10, 6);
+        // Filter #2: tier/product override. 5 args = override value + 4 context args.
+        add_filter('wicket_mship_bundle_renewal_charge_tier_product', [$this, 'resolveRenewalTierProduct'], 10, 5);
 
         // Filter #3: per-line-item price/fee adjustment (single-channel). 6 args.
         // The callback mutates $renewal_order directly; return value is ignored by core.
@@ -48,7 +48,6 @@ final class BundleRenewalSubscriber
      * @param mixed $override             Current value (null until someone answers).
      * @param int   $oldMembershipPostId  The expiring wicket_membership post.
      * @param int   $userId               WP user ID of the renewing member.
-     * @param int   $newBundlePostId      The new bundle post.
      * @param int   $oldBundlePostId      The prior bundle post.
      * @param array $coreDefault          Core's own tier/product decision, for reference.
      *
@@ -58,12 +57,11 @@ final class BundleRenewalSubscriber
         mixed $override = null,
         int $oldMembershipPostId = 0,
         int $userId = 0,
-        int $newBundlePostId = 0,
         int $oldBundlePostId = 0,
         array $coreDefault = [],
     ): mixed {
         // B3: defaults on every param (the cross-repo fire site may pass fewer
-        // than 6 args) + a `mixed` return so a non-array prior override passes
+        // than 5 args) + a `mixed` return so a non-array prior override passes
         // through unchanged instead of TypeErroing inside the renewal flow.
         if ($override !== null) {
             return $override;
