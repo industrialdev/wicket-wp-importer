@@ -38,6 +38,14 @@ final class CsvExporter
             return "\t" . $value;
         }
 
+        // Long digit-only IDs (e.g. 18-digit OBA Bar IDs) parse as floats in
+        // Excel/Sheets: scientific display, and precision truncation past 15
+        // digits on re-save. Force text below that cliff. Short numeric IDs
+        // (order, subscription) stay numeric on purpose.
+        if (preg_match('/^\d{14,}$/', $value)) {
+            return "\t" . $value;
+        }
+
         return $value;
     }
 
