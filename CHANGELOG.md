@@ -5,6 +5,12 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 <!-- new releases inserted below this line -->
 
+## [1.0.55] - 2026-09-11
+
+### Fixed
+- **csv:** text-force long digit ids in exports (WWID-2547)
+
+
 ## [1.0.54] - 2026-09-07
 
 ### Fixed
