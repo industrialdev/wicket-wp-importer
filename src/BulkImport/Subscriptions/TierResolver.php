@@ -16,7 +16,7 @@ use WicketImporter\Services\Logger;
  * product by SKU, so it carries zero environment-specific post/product IDs.
  * Names and SKUs resolve to IDs at call time.
  *
- * Answers the bundle-renewal Filter #2 `wicket_mship_bundle_renewal_member_tier_product`
+ * Answers the bundle-renewal Filter #2 `wicket_mship_bundle_renewal_charge_tier_product`
  * (decision D-LOCKBOX-2, PULL architecture): a non-null return fully overrides
  * core's renewal_type/next_tier_id decision; null means "no succession rule
  * applies, use core's own default."
