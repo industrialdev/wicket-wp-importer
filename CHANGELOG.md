@@ -5,6 +5,12 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 <!-- new releases inserted below this line -->
 
+## [1.0.56] - 2026-09-16
+
+### Fixed
+- subscribe to renamed wicket_mship_bundle_renewal_charge_tier_product
+
+
 ## [1.0.55] - 2026-09-11
 
 ### Fixed
