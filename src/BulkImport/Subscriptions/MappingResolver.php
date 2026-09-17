@@ -54,21 +54,24 @@ final class MappingResolver
      * Filter #3 callback (single-channel). Mutates the renewal order for
      * applicable late-fee + discount mappings. Return is ignored by core.
      *
-     * @param object $item               The renewal-order line item (WC_Order_Item).
-     * @param int    $itemId             Line item ID.
      * @param int    $membershipPostId   The member's wicket_membership post.
-     * @param int    $userId             WP user ID of the member.
+     * @param int    $itemId             Line item ID (the idempotency key).
      * @param object $renewalOrder       The full renewal order (WC_Order).
      */
     public function applyLineItemAdjustments(
         int $membershipPostId,
+        int $itemId,
+        object $item,
         object $renewalOrder,
     ): void {
-        // Filter #3 fires once PER line item, but late-fee + discount tallies are
-        // order-level mutations. Without this guard a renewal order with N line
-        // items would receive every fee/discount N times (silent overcharge).
-        // Run the whole-order tally exactly once, then stamp the order.
-        if ($this->mappingsAlreadyApplied($renewalOrder)) {
+        // Filter #3 fires once PER line item, and a member is not restricted to
+        // one line item on a bundle renewal order (e.g. a membership line plus
+        // an add-on product, both carrying the same membershipPostId). The
+        // guard must therefore be per line item, not per member or per order:
+        // an order-wide flag collapses every member's tally onto whichever line
+        // item is processed first, silently skipping every other line item's
+        // roles, including a second item for the SAME member.
+        if ($this->mappingsAlreadyApplied($renewalOrder, $itemId)) {
             return;
         }
 
@@ -82,30 +85,45 @@ final class MappingResolver
             return;
         }
 
-        $this->applyMappings($matched, $renewalOrder);
-        $this->markMappingsApplied($renewalOrder);
+        $this->applyMappings($matched, $item, $renewalOrder);
+        $this->markMappingsApplied($renewalOrder, $itemId);
     }
 
     /**
-     * Has this renewal order already had its lockbox fee/discount tally applied?
-     * Reads the order meta flag set by markMappingsApplied().
+     * Has this line item's lockbox fee/discount tally already been applied on
+     * this renewal order? Reads the processed-item list set by
+     * markMappingsApplied().
      */
-    private function mappingsAlreadyApplied(object $renewalOrder): bool
+    private function mappingsAlreadyApplied(object $renewalOrder, int $itemId): bool
     {
-        return method_exists($renewalOrder, 'get_meta')
-            && $renewalOrder->get_meta('_wicket_lockbox_mappings_applied') === 'yes';
+        if (!method_exists($renewalOrder, 'get_meta')) {
+            return false;
+        }
+
+        $processed = $renewalOrder->get_meta('_wicket_lockbox_mappings_applied_for');
+
+        return is_array($processed) && in_array($itemId, $processed, true);
     }
 
     /**
-     * Stamp the order so subsequent Filter #3 callbacks (one per remaining line
-     * item) short-circuit instead of re-applying the whole-order tally.
+     * Record this line item as processed so a later Filter #3 callback for the
+     * same itemId (should one ever occur) short-circuits, without blocking
+     * other line items — including another item for the same member — on the
+     * same order.
      */
-    private function markMappingsApplied(object $renewalOrder): void
+    private function markMappingsApplied(object $renewalOrder, int $itemId): void
     {
-        if (!method_exists($renewalOrder, 'update_meta_data')) {
+        if (!method_exists($renewalOrder, 'get_meta') || !method_exists($renewalOrder, 'update_meta_data')) {
             return;
         }
-        $renewalOrder->update_meta_data('_wicket_lockbox_mappings_applied', 'yes');
+
+        $processed = $renewalOrder->get_meta('_wicket_lockbox_mappings_applied_for');
+        if (!is_array($processed)) {
+            $processed = [];
+        }
+        $processed[] = $itemId;
+
+        $renewalOrder->update_meta_data('_wicket_lockbox_mappings_applied_for', array_values(array_unique($processed)));
         if (method_exists($renewalOrder, 'save')) {
             $renewalOrder->save();
         }
@@ -165,7 +183,7 @@ final class MappingResolver
      *
      * @param array{late_fees: list<MappingEntry>, discounts: list<MappingEntry>} $matched
      */
-    private function applyMappings(array $matched, object $renewalOrder): void
+    private function applyMappings(array $matched, object $item, object $renewalOrder): void
     {
         foreach ($matched['late_fees'] as $fee) {
             try {
@@ -185,6 +203,7 @@ final class MappingResolver
                 if ($discount->applicationType === 'coupon') {
                     if ($discount->couponCode !== null && $discount->couponCode !== '') {
                         $renewalOrder->apply_coupon($discount->couponCode);
+                        $this->stampCouponAttribution($item, $discount);
                     }
                     continue;
                 }
@@ -198,6 +217,25 @@ final class MappingResolver
                 $this->logger?->warning('Discount application threw; continuing.', ['role' => $discount->roleSlug, 'error' => $e->getMessage()]);
             }
         }
+    }
+
+    /**
+     * Records which mapping rule applied this coupon (coupon_lines is
+     * order-level and code-only). Bundle renewal only.
+     */
+    private function stampCouponAttribution(object $item, MappingEntry $discount): void
+    {
+        if (!method_exists($item, 'update_meta_data') || !method_exists($item, 'save')) {
+            return;
+        }
+
+        // Flat scalar keys, not one array-valued key: WC_Order_Item::
+        // get_formatted_meta_data() skips any meta value that fails
+        // is_scalar(), so an array value never renders on the order edit
+        // screen at all.
+        $item->update_meta_data('_wicket_lockbox_coupon_code', $discount->couponCode);
+        $item->update_meta_data('_wicket_lockbox_coupon_role_slug', $discount->roleSlug);
+        $item->save();
     }
 
     /**

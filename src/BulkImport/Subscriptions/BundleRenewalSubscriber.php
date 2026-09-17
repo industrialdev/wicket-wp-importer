@@ -99,6 +99,8 @@ final class BundleRenewalSubscriber
         if (is_object($renewalOrder)) {
             $this->mappingResolver->applyLineItemAdjustments(
                 $membershipPostId,
+                $itemId,
+                $item,
                 $renewalOrder
             );
         }
