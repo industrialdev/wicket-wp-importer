@@ -5,6 +5,12 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 <!-- new releases inserted below this line -->
 
+## [1.0.57] - 2026-09-21
+
+### Fixed
+- **cheque:** create order with its customer set (WWID-2605) (#6)
+
+
 ## [1.0.56] - 2026-09-16
 
 ### Fixed
