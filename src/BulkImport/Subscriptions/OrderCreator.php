@@ -104,14 +104,16 @@ class OrderCreator
             }
         }
 
-        $order = wc_create_order();
+        // The customer must be on the order at creation: wc_create_order fires
+        // woocommerce_new_order, and the base plugin's org auto-assign hook
+        // resolves the org from the order's customer -- falling back to the
+        // current user when it has none (WWID-2605: every order in a batch
+        // inherited the importing admin's organization).
+        $order = wc_create_order(['customer_id' => $userId]);
         if (is_wp_error($order)) {
             return OrderResult::failed('Could not create the order: ' . $order->get_error_message());
         }
 
-        if ($userId > 0) {
-            $order->set_customer_id($userId);
-        }
         $this->applyPaymentMethod($order);
 
         // Story 12: the run's human-readable batch label on every order so
