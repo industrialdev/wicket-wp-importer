@@ -5,6 +5,12 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 <!-- new releases inserted below this line -->
 
+## [1.0.61] - 2026-09-24
+
+### Fixed
+- **importer:** warn on external_id flags at phase-1 finalize (WWID-2629)
+
+
 ## [1.0.60] - 2026-09-24
 
 ### Fixed
