@@ -99,7 +99,7 @@ final class WicketImporter
         $mdp_client = new BulkImport\WicketMdpClient($logger);
         $person_resolver = new BulkImport\PersonResolver($mdp_client);
         $chequeRowProcessor = new BulkImport\Subscriptions\Cheque\ChequeRowProcessor(
-            new BulkImport\Subscriptions\OrderCreator(),
+            new BulkImport\Subscriptions\OrderCreator($logger),
             new BulkImport\Subscriptions\SubscriptionCreator($logger),
             new BulkImport\Subscriptions\ProductResolver($logger),
             $logger

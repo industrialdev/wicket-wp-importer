@@ -10,7 +10,9 @@ use WicketImporter\Services\Logger;
 /**
  * Creates the On Hold WooCommerce order for one cheque-renewal row: the resolved
  * membership + section + late-fee products as line items, the cheque payment
- * method, associated with the member's WC customer account.
+ * method, associated with the member's WC customer account. Billing fields
+ * (primary email + primary address) are pulled from the member's MDP person so
+ * invoices render complete (WWID-2630).
  *
  * Generic by design (AD1). Core resolves the WC customer from the authoritative
  * MDP person UUID (the same path ImportAdapter uses), NEVER from any client
@@ -130,6 +132,13 @@ class OrderCreator
             return OrderResult::failed('No products could be added to the order.');
         }
 
+        // Billing from MDP: invoices and admin views render the billing address
+        // + email, and wc_create_order does NOT copy them from the customer's
+        // account. Subscriptions copy this order's billing (SubscriptionCreator),
+        // so populating here covers the whole chain. Best-effort: an MDP miss
+        // logs and leaves billing empty rather than failing the row.
+        $this->applyBillingFromMdp($order, $userId, $data);
+
         // Coupon-type discounts (WWID-2436): product-type discounts ride in as
         // line items above; coupons apply at order level. apply_coupon returns
         // false/WP_Error on rejection (invalid, expired, usage limits) instead
@@ -227,6 +236,160 @@ class OrderCreator
                 $item->save();
             }
         }
+    }
+
+    /**
+     * Populate the order's billing fields from the member's MDP record: names
+     * + primary email from the person, primary address from the address list
+     * (first active address when none is flagged primary). Only non-empty
+     * values are written. Any MDP failure is logged and skipped: billing is a
+     * rendering concern, never worth failing a paid renewal over.
+     */
+    private function applyBillingFromMdp(object $order, int $userId, MemberData $data): void
+    {
+        if (!method_exists($order, 'set_billing_address')) {
+            return;
+        }
+
+        $uuid = $this->personUuidForBilling($userId, $data);
+        if ($uuid === '') {
+            return;
+        }
+
+        $client = $this->apiClient();
+        if ($client === null) {
+            return;
+        }
+
+        $billing = [];
+        try {
+            $person = $client->get("people/{$uuid}");
+            $billing = $this->billingFromPerson(is_array($person) ? ($person['data']['attributes'] ?? []) : []);
+        } catch (\Throwable $e) {
+            $this->logger?->warning('MDP person fetch failed; order billing incomplete.', [
+                'person_uuid' => $uuid, 'error' => $e->getMessage(),
+            ]);
+        }
+
+        try {
+            $addresses = $client->get("people/{$uuid}/addresses");
+            $address = $this->primaryAddress(is_array($addresses) ? ($addresses['data'] ?? []) : []);
+            if ($address !== []) {
+                $billing += $address;
+            }
+        } catch (\Throwable $e) {
+            $this->logger?->warning('MDP address fetch failed; order billing incomplete.', [
+                'person_uuid' => $uuid, 'error' => $e->getMessage(),
+            ]);
+        }
+
+        if ($billing !== []) {
+            $order->set_billing_address($billing);
+        }
+    }
+
+    /**
+     * The person UUID billing must resolve against: the order's OWN customer.
+     * The stack-wide invariant is WP user login == MDP person UUID
+     * (wicket_create_wp_user_if_not_exist, CAS role sync), so the resolved
+     * customer's login is authoritative even when the client resolved it by
+     * another identifier (OBA Bar ID) and the staged row's mdp_uuid is empty.
+     * Falls back to the row's person UUID (generic flows) when the login is
+     * not UUID-shaped (e.g. an admin-created user).
+     */
+    private function personUuidForBilling(int $userId, MemberData $data): string
+    {
+        if ($userId > 0 && function_exists('get_user_by')) {
+            $user = get_user_by('id', $userId);
+            $login = is_object($user) ? (string) ($user->user_login ?? '') : '';
+            if ($this->isUuid($login)) {
+                return strtolower($login);
+            }
+        }
+
+        return $this->isUuid($data->personUuid) ? strtolower($data->personUuid) : '';
+    }
+
+    /** Canonical MDP UUID shape; anything else is not a person we can fetch. */
+    private function isUuid(string $value): bool
+    {
+        return preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i', $value) === 1;
+    }
+
+    /**
+     * The base plugin's configured MDP SDK client, or null when unavailable.
+     */
+    private function apiClient(): ?object
+    {
+        if (!function_exists('wicket_api_client')) {
+            return null;
+        }
+        try {
+            $client = wicket_api_client();
+
+            return is_object($client) ? $client : null;
+        } catch (\Throwable $e) {
+            $this->logger?->warning('wicket_api_client() threw; order billing incomplete.', ['error' => $e->getMessage()]);
+
+            return null;
+        }
+    }
+
+    /**
+     * Billing keys (unprefixed, as WC_Order::set_billing_address expects) from
+     * the MDP person attributes. Empty values are dropped so existing data is
+     * never blanked.
+     *
+     * @param array<string,mixed> $attributes MDP person attributes.
+     *
+     * @return array<string,string>
+     */
+    private function billingFromPerson(array $attributes): array
+    {
+        return array_filter([
+            'first_name' => (string) ($attributes['given_name'] ?? ''),
+            'last_name'  => (string) ($attributes['family_name'] ?? ''),
+            'email'      => (string) ($attributes['primary_email_address'] ?? ''),
+        ], static fn (string $v): bool => $v !== '');
+    }
+
+    /**
+     * Pick the primary (else first active) MDP address and map it to billing
+     * keys. No primary flag and no active address -> empty.
+     *
+     * @param list<array<string,mixed>> $addresses Raw JSON:API address resources.
+     *
+     * @return array<string,string>
+     */
+    private function primaryAddress(array $addresses): array
+    {
+        $active = array_values(array_filter($addresses, static fn ($a): bool =>
+            is_array($a) && (($a['attributes']['active'] ?? true) !== false)
+        ));
+        if ($active === []) {
+            return [];
+        }
+
+        $picked = null;
+        foreach ($active as $address) {
+            if (!empty($address['attributes']['primary'])) {
+                $picked = $address;
+                break;
+            }
+        }
+        $picked ??= $active[0];
+
+        $a = $picked['attributes'];
+
+        return array_filter([
+            'company'   => (string) ($a['company_name'] ?? ''),
+            'address_1' => (string) ($a['address1'] ?? ''),
+            'address_2' => (string) ($a['address2'] ?? ''),
+            'city'      => (string) ($a['city'] ?? ''),
+            'state'     => (string) ($a['state_name'] ?? ''),
+            'postcode'  => (string) ($a['zip_code'] ?? ''),
+            'country'   => (string) ($a['country_code'] ?? ''),
+        ], static fn (string $v): bool => $v !== '');
     }
 
     /**
