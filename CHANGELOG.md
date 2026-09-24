@@ -5,6 +5,12 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 <!-- new releases inserted below this line -->
 
+## [1.0.59] - 2026-09-24
+
+### Fixed
+- **cheque:** populate order billing from MDP person and primary address (WWID-2630)
+
+
 ## [1.0.58] - 2026-09-24
 
 ### Fixed
