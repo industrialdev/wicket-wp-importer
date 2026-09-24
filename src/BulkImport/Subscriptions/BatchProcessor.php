@@ -765,6 +765,13 @@ final class BatchProcessor
                 return;
             }
 
+            // WWID-2629: Phase 1 is the last automated moment a membership is
+            // touched, so surface posts left without an MDP external_id here —
+            // otherwise the collision/failed flags only show up in wc-logs when
+            // someone greps for them, and the MDP shows no "Managed Externally"
+            // link with no signal at all.
+            $this->logExternalIdFlagSummary();
+
             $this->finishRun($batchId, 'pending_review', $this->tally($sessionId, $staging), [
                 'phase1_completed_at' => \current_time('mysql', true),
                 'conflicting_roles' => $this->conflictingRolesJson($sessionId, $staging),
@@ -866,6 +873,43 @@ final class BatchProcessor
         ], $rows));
 
         return wp_json_encode($conflicts) ?: null;
+    }
+
+    /**
+     * Log a summary of membership posts left without an MDP external_id
+     * (collision or PATCH-failed flag), WWID-2629.
+     *
+     * external_id is the WP membership post ID and the MDP holds a unique index
+     * on it per membership type, so a foreign record squatting on our post ID
+     * (typically a QA install sharing the MDP staging tenant) leaves the post
+     * unlinked while everything else about the row looks healthy. The flags are
+     * rare by construction, so the meta_key scan stays cheap.
+     */
+    private function logExternalIdFlagSummary(): void
+    {
+        global $wpdb;
+
+        $flagKeys = ['_wicket_membership_external_id_collision', '_wicket_membership_external_id_failed'];
+        $placeholders = implode(',', array_fill(0, count($flagKeys), '%s'));
+
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.DirectDatabaseQuery.DirectQuery
+        $flagged = (int) $wpdb->get_var($wpdb->prepare(
+            // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+            "SELECT COUNT(DISTINCT pm.post_id) FROM {$wpdb->postmeta} pm WHERE pm.meta_key IN ({$placeholders})",
+            ...$flagKeys
+        ));
+
+        if ($flagged === 0) {
+            return;
+        }
+
+        $this->logger?->warning(
+            sprintf(
+                '%1$d membership post(s) carry an external_id collision or failed flag and have no MDP link. Review with: wp wicket-mship external-id repair --dry-run',
+                $flagged
+            ),
+            ['flagged_posts' => $flagged]
+        );
     }
 
     /**
