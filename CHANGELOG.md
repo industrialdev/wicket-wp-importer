@@ -5,6 +5,13 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 <!-- new releases inserted below this line -->
 
+## [1.0.58] - 2026-09-24
+
+### Fixed
+- **importer:** scope discounts to the renewed membership (WWID-2628)
+- **importer:** scope bundle-renewal mapping guard to per-item, not per-order
+
+
 ## [1.0.57] - 2026-09-21
 
 ### Fixed
