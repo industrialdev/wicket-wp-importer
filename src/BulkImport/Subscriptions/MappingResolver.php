@@ -85,7 +85,7 @@ final class MappingResolver
             return;
         }
 
-        $this->applyMappings($matched, $item, $renewalOrder);
+        $this->applyMappings($matched, $membershipPostId, $itemId, $item, $renewalOrder);
         $this->markMappingsApplied($renewalOrder, $itemId);
     }
 
@@ -182,8 +182,10 @@ final class MappingResolver
      * adjustments. Failures are logged and skipped.
      *
      * @param array{late_fees: list<MappingEntry>, discounts: list<MappingEntry>} $matched
+     * @param int $membershipPostId The membership being renewed by this line item.
+     * @param int $itemId           The line item id (idempotency key, log context).
      */
-    private function applyMappings(array $matched, object $item, object $renewalOrder): void
+    private function applyMappings(array $matched, int $membershipPostId, int $itemId, object $item, object $renewalOrder): void
     {
         foreach ($matched['late_fees'] as $fee) {
             try {
@@ -200,6 +202,25 @@ final class MappingResolver
 
         foreach ($matched['discounts'] as $discount) {
             try {
+                // Membership-scope veto (WWID-2628): a role match alone cannot
+                // see WHAT the line item renews, so a discount scoped to one
+                // section fires on national renewals too. Clients scope their
+                // discounts here, keyed on the membership post; default true
+                // keeps role-keyed behavior for clients that do not hook it.
+                // Inside the try: a throwing callback skips just this discount,
+                // same isolation as every other failure below.
+                $applies = (bool) apply_filters(
+                    'wicket_import_discount_applies',
+                    true,
+                    $discount,
+                    $membershipPostId,
+                    $itemId,
+                    $item,
+                    $renewalOrder,
+                );
+                if (!$applies) {
+                    continue;
+                }
                 if ($discount->applicationType === 'coupon') {
                     if ($discount->couponCode !== null && $discount->couponCode !== '') {
                         $renewalOrder->apply_coupon($discount->couponCode);
