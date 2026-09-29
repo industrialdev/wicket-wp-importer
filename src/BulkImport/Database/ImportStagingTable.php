@@ -803,27 +803,11 @@ class ImportStagingTable
     }
 
     /**
-     * Count pending rows in a session.
-     */
-    public function countPendingInSession(string $session_id): int
-    {
-        global $wpdb;
-
-        return (int) $wpdb->get_var(
-            $wpdb->prepare(
-                "SELECT COUNT(*) FROM {$this->table_name} WHERE session_id = %s AND import_status = 'pending'",
-                $session_id
-            )
-        );
-    }
-
-    /**
      * Count rows in a session that the import phase would actually process:
      * validation_status IN ('valid', 'warning') AND import_status = 'pending'.
      *
      * This is the precise pre-flight count for ImportPipeline::runImport's inline
-     * cap. countPendingInSession() over-counts because it includes rows that
-     * failed validation and would be skipped when $skipFlagged is true.
+     * cap: rows that failed validation are skipped when $skipFlagged is true.
      */
     public function countImportableInSession(string $session_id): int
     {
