@@ -5,6 +5,12 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 <!-- new releases inserted below this line -->
 
+## [1.0.62] - 2026-09-30
+
+### Fixed
+- **upload:** guard money-key reads and drop dead staging counter (WWID-2665) (#8)
+
+
 ## [1.0.61] - 2026-09-24
 
 ### Fixed
