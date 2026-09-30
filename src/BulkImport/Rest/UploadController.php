@@ -1212,9 +1212,9 @@ final class UploadController
             // Discrepancy reporting (D-LOCKBOX-4, spec Story 11): bank amount,
             // calculated total, and the signed delta for every reconciled
             // record. Empty for rows Phase 2 never reconciled.
-            $line[] = $row['payment_amount'] !== null ? sprintf('%.2F', (float) $row['payment_amount']) : '';
-            $line[] = $row['expected_amount'] !== null ? sprintf('%.2F', (float) $row['expected_amount']) : '';
-            $line[] = $row['discrepancy_amount'] !== null ? sprintf('%.2F', (float) $row['discrepancy_amount']) : '';
+            $line[] = ($row['payment_amount'] ?? null) !== null ? sprintf('%.2F', (float) $row['payment_amount']) : '';
+            $line[] = ($row['expected_amount'] ?? null) !== null ? sprintf('%.2F', (float) $row['expected_amount']) : '';
+            $line[] = ($row['discrepancy_amount'] ?? null) !== null ? sprintf('%.2F', (float) $row['discrepancy_amount']) : '';
 
             // Extension cells: guarded like the table's extractors — a throwing
             // extractor yields an empty cell, never a broken export.
