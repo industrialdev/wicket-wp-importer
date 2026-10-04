@@ -154,6 +154,15 @@ final class WicketMdpClient
          */
         $payload = apply_filters('wicket_import_person_data', $payload, $row, 'create');
 
+        // The MDP JSON:API parser rejects an attributes list: an empty PHP
+        // array encodes as [] on the wire and the request 403s. Extensions
+        // keep array access above the filter; cast at the last moment so the
+        // wire always carries an object, {} when empty.
+        if (! is_array($payload) || ! is_array($payload['data']['attributes'] ?? null)) {
+            return new \WP_Error('mdp_create_invalid_payload', 'wicket_import_person_data returned an invalid payload.');
+        }
+        $payload['data']['attributes'] = (object) $payload['data']['attributes'];
+
         try {
             $response = $client->post('people', ['json' => $payload]);
         } catch (\Throwable $e) {
