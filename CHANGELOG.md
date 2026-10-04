@@ -5,6 +5,12 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 <!-- new releases inserted below this line -->
 
+## [1.0.64] - 2026-10-04
+
+### Fixed
+- never send a JSON list as person attributes on create
+
+
 ## [1.0.63] - 2026-10-01
 
 ### Maintenance
