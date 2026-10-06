@@ -191,7 +191,7 @@ final class MappingResolver
             try {
                 $product = $this->product($fee->resolveProductId());
                 if ($product === null) {
-                    $this->logger?->warning('Late-fee product missing; skipping line.', ['role' => $fee->roleSlug, 'product_id' => $fee->productId]);
+                    $this->logger?->warning('Late-fee product missing; skipping line.', ['role' => $fee->roleSlug, 'sku' => $fee->productSku, 'product_id' => $fee->productId]);
                     continue;
                 }
                 $renewalOrder->add_product($product, 1);
@@ -222,22 +222,74 @@ final class MappingResolver
                     continue;
                 }
                 if ($discount->applicationType === 'coupon') {
-                    if ($discount->couponCode !== null && $discount->couponCode !== '') {
-                        $renewalOrder->apply_coupon($discount->couponCode);
-                        $this->stampCouponAttribution($item, $discount);
-                    }
+                    $this->applyCouponDiscount($discount, $item, $renewalOrder);
                     continue;
                 }
-                // 'product' discount: add the product line (the product's own
-                // price carries the negative/discount value).
-                $product = $this->product($discount->resolveProductId());
-                if ($product !== null) {
-                    $renewalOrder->add_product($product, 1);
-                }
+                $this->applyProductDiscount($discount, $renewalOrder);
             } catch (\Throwable $e) {
                 $this->logger?->warning('Discount application threw; continuing.', ['role' => $discount->roleSlug, 'error' => $e->getMessage()]);
             }
         }
+    }
+
+    /**
+     * Applies a coupon-type discount (WWID-2628 hardening). WC_Order::
+     * apply_coupon() returns false or a WP_Error when WooCommerce rejects
+     * the coupon (expired, usage-capped, or invalid code). The discount did
+     * not happen, so the attribution stamp is skipped and the rejection is
+     * logged: a stamped line carrying no coupon lies on the order edit
+     * screen and in any audit.
+     */
+    private function applyCouponDiscount(MappingEntry $discount, object $item, object $renewalOrder): void
+    {
+        if ($discount->couponCode === null || $discount->couponCode === '') {
+            return;
+        }
+
+        // Filter #3 fires once per line item, so a bundle order can offer
+        // the same code more than once. An already-applied code is done, not
+        // a rejection: stamp this line's attribution and stay quiet.
+        if (method_exists($renewalOrder, 'get_coupon_codes')
+            && in_array(wc_format_coupon_code($discount->couponCode), $renewalOrder->get_coupon_codes(), true)) {
+            $this->stampCouponAttribution($item, $discount);
+
+            return;
+        }
+
+        $applied = $renewalOrder->apply_coupon($discount->couponCode);
+        if ($applied === false || is_wp_error($applied)) {
+            $this->logger?->warning('Bundle renewal discount coupon rejected by WooCommerce.', [
+                'role'   => $discount->roleSlug,
+                'coupon' => $discount->couponCode,
+                'error'  => is_wp_error($applied) ? $applied->get_error_message() : 'apply_coupon returned false',
+            ]);
+
+            return;
+        }
+
+        $this->stampCouponAttribution($item, $discount);
+    }
+
+    /**
+     * Adds a product-type discount line (the product's own price carries the
+     * negative/discount value). A missing product is logged, not silent
+     * (WWID-2628: OBA had no discount products configured, so the order
+     * carried no discount at all and the miss was invisible).
+     */
+    private function applyProductDiscount(MappingEntry $discount, object $renewalOrder): void
+    {
+        $product = $this->product($discount->resolveProductId());
+        if ($product === null) {
+            $this->logger?->warning('Discount product missing; skipping line.', [
+                'role'       => $discount->roleSlug,
+                'sku'        => $discount->productSku,
+                'product_id' => $discount->productId,
+            ]);
+
+            return;
+        }
+
+        $renewalOrder->add_product($product, 1);
     }
 
     /**
