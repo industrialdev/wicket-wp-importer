@@ -5,6 +5,12 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 <!-- new releases inserted below this line -->
 
+## [1.0.65] - 2026-10-06
+
+### Fixed
+- **lockbox:** verify coupon application before stamping attribution (WWID-2628)
+
+
 ## [1.0.64] - 2026-10-04
 
 ### Fixed
