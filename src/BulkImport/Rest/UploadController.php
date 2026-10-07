@@ -737,9 +737,9 @@ final class UploadController
         $rows = Plugin::get_instance()->StagingTable()->getBySession($sessionId);
 
         // Batch ID (WWID-2708): the human label the client cross-references
-        // against Woo Orders. keysForSession() fetches the same batch row for
-        // flow detection; refactoring it into a shared fetch would touch the
-        // flagged-csv/error-csv signatures, so a second indexed read it is.
+        // against Woo Orders. keysForSession() runs the same indexed read for
+        // flow detection; the duplicate query is cheaper than widening its
+        // signature for a download action.
         $flowBatch = Plugin::get_instance()->BatchProcessor()->getBatchBySession($sessionId);
 
         (new CsvExporter())->download(
