@@ -1752,6 +1752,7 @@ class ImportAdminPage
 
 			<table class="widefat striped wicket-importer-history-summary">
 				<tbody>
+					<tr><th><?php esc_html_e('Batch ID', 'wicket-wp-importer'); ?></th><td><?php echo esc_html($batch->batch_label ?: '—'); ?></td></tr>
 					<tr><th><?php esc_html_e('Started', 'wicket-wp-importer'); ?></th><td><?php echo esc_html(mysql2date('Y-m-d H:i', $batch->created_at)); ?></td></tr>
 					<tr><th><?php esc_html_e('File', 'wicket-wp-importer'); ?></th><td><?php echo esc_html($batch->csv_filename ?: '—'); ?></td></tr>
 					<tr><th><?php esc_html_e('User', 'wicket-wp-importer'); ?></th><td><?php echo esc_html($batch->user_display_name ?: '—'); ?></td></tr>
