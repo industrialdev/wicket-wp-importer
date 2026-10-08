@@ -358,7 +358,21 @@ final class ChequeReviewPage
         // human state name, show real movement (bar + settled count), and say
         // the page updates itself. admin.js keeps the numbers fresh via the
         // progress endpoint and reloads once when the batch lands.
-        $rows = [
+        $rows = [];
+
+        // Batch ID (WWID-2708): the human label the client cross-references
+        // against Woo Orders. Rendered only once it exists — legacy batches
+        // predating the batch_label column carry none and hide the row. The
+        // value is pre-escaped because renderSummary echoes 'value' raw.
+        $batchLabel = (string) ($batch['batch_label'] ?? '');
+        if ($batchLabel !== '') {
+            $rows['batch_id'] = [
+                'label' => __('Batch ID', 'wicket-wp-importer'),
+                'value' => esc_html($batchLabel),
+            ];
+        }
+
+        $rows += [
             'status' => [
                 'label' => __('Status', 'wicket-wp-importer'),
                 'value' => '<span class="wicket-importer-state">' . esc_html(ImportAdminPage::statusLabel($status)) . '</span>',

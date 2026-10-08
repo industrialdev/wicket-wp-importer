@@ -736,9 +736,15 @@ final class UploadController
         $sessionId = (string) ($request['id'] ?? '');
         $rows = Plugin::get_instance()->StagingTable()->getBySession($sessionId);
 
+        // Batch ID (WWID-2708): the human label the client cross-references
+        // against Woo Orders. keysForSession() runs the same indexed read for
+        // flow detection; the duplicate query is cheaper than widening its
+        // signature for a download action.
+        $flowBatch = Plugin::get_instance()->BatchProcessor()->getBatchBySession($sessionId);
+
         (new CsvExporter())->download(
             sprintf('import-results-%s.csv', $sessionId),
-            $this->buildResultsCsv($rows, $this->keysForSession($sessionId, $rows))
+            $this->buildResultsCsv($rows, $this->keysForSession($sessionId, $rows), (string) ($flowBatch['batch_label'] ?? ''))
         );
     }
 
@@ -1151,9 +1157,11 @@ final class UploadController
      * Build the full CSV row list (headers first) for a results export.
      *
      * @param list<array<string,mixed>> $rows Staged rows.
+     * @param string $batchLabel Session's human batch label (WWID-2708); empty
+     *                           when the session predates batch rows.
      * @return list<list<string>>
      */
-    private function buildResultsCsv(array $rows, ?array $dataKeys = null): array
+    private function buildResultsCsv(array $rows, ?array $dataKeys = null, string $batchLabel = ''): array
     {
         $dataKeys ??= ColumnOrder::forRows($rows);
 
@@ -1165,7 +1173,9 @@ final class UploadController
          * raw_data + extension_metadata decoded, statuses, ids), so OBA's Bar
          * ID / tier / View-in-MDP columns render identically in the CSV
          * (WWID-2350). Columns append AFTER the fixed tail so existing header
-         * positions never shift for consumers of prior exports.
+         * positions never shift for consumers of prior exports. The fixed tail
+         * itself only grows by documented precedent (D-LOCKBOX-4 discrepancy
+         * columns, WWID-2708 Batch ID).
          */
         $extColumns = apply_filters('wicket_import_confirmation_columns', []);
         $extColumns = is_array($extColumns) ? $extColumns : [];
@@ -1174,7 +1184,7 @@ final class UploadController
         $headers = array_merge(
             ['Line'],
             $dataKeys,
-            ['Import Status', 'Message', 'MDP UUID', 'Order ID', 'Subscription IDs', 'Payment Amount', 'Expected Total', 'Discrepancy'],
+            ['Import Status', 'Message', 'MDP UUID', 'Order ID', 'Subscription IDs', 'Payment Amount', 'Expected Total', 'Discrepancy', 'Batch ID'],
             array_map(static fn (array $col) => (string) $col['label'], $extColumns)
         );
 
@@ -1215,6 +1225,11 @@ final class UploadController
             $line[] = ($row['payment_amount'] ?? null) !== null ? sprintf('%.2F', (float) $row['payment_amount']) : '';
             $line[] = ($row['expected_amount'] ?? null) !== null ? sprintf('%.2F', (float) $row['expected_amount']) : '';
             $line[] = ($row['discrepancy_amount'] ?? null) !== null ? sprintf('%.2F', (float) $row['discrepancy_amount']) : '';
+
+            // Batch ID (WWID-2708): same label Woo Orders stamp as _batch_id,
+            // repeated per row so any spreadsheet filter joins back to the
+            // lockbox run. Empty for legacy sessions with no batch row.
+            $line[] = $batchLabel;
 
             // Extension cells: guarded like the table's extractors — a throwing
             // extractor yields an empty cell, never a broken export.
