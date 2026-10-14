@@ -1372,6 +1372,7 @@ class ImportAdminPage
 						    $detailUrl = add_query_arg('batch_id', $row->batch_id, $baseUrl);
 						    $progress = self::progressLabel([
 						        'status'              => (string) $row->status,
+						        'import_flow'         => (string) $row->import_flow,
 						        'phase1_succeeded'    => (int) $row->phase1_succeeded,
 						        'phase1_failed'       => (int) $row->phase1_failed,
 						        'phase1_needs_review' => (int) $row->phase1_needs_review,
@@ -1516,7 +1517,10 @@ class ImportAdminPage
                     ? __('Phase 1 complete, awaiting lockbox', 'wicket-wp-importer')
                     : __('Import needs review', 'wicket-wp-importer');
             case 'completed':
-                return $hasPhase2
+                // WWID-2772: a clean cheque drain lands here with zero matched
+                // payments (rows updated in place, nothing to reconcile), so
+                // flow decides the noun; only the member flow imports members.
+                return ($batch['import_flow'] ?? '') === 'cheque' || $hasPhase2
                     ? __('Lockbox complete', 'wicket-wp-importer')
                     : __('Members imported', 'wicket-wp-importer');
             case 'failed':

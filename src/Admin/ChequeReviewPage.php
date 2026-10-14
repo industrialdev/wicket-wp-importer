@@ -167,7 +167,7 @@ final class ChequeReviewPage
 
         $total = (int) $wpdb->get_var("SELECT COUNT(*) FROM {$batchesTable} WHERE import_flow = 'cheque' AND {$where}");
         $rows = $total > 0 ? $wpdb->get_results($wpdb->prepare(
-            "SELECT session_id, status, csv_filename, csv_row_count, phase1_succeeded, phase1_failed, phase1_needs_review, phase2_total, phase2_succeeded, created_at
+            "SELECT session_id, status, import_flow, csv_filename, csv_row_count, phase1_succeeded, phase1_failed, phase1_needs_review, phase2_total, phase2_succeeded, created_at
              FROM {$batchesTable}
              WHERE import_flow = 'cheque'
                AND {$where}
@@ -217,6 +217,7 @@ final class ChequeReviewPage
                     $openUrl = admin_url('admin.php?page=wicket-wp-importer&tab=cheque-review&session_id=') . rawurlencode((string) $row->session_id);
                     $progress = ImportAdminPage::progressLabel([
                         'status'              => (string) $row->status,
+                        'import_flow'         => (string) $row->import_flow,
                         'phase1_succeeded'    => (int) $row->phase1_succeeded,
                         'phase1_failed'       => (int) $row->phase1_failed,
                         'phase1_needs_review' => (int) $row->phase1_needs_review,

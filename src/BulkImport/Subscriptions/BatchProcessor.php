@@ -945,9 +945,9 @@ final class BatchProcessor
         if ($claimed === 0) {
             // Phase 2 drained: persist the reconciliation tally onto the batch.
             $tally = $staging->tallyPhase2($sessionId);
-            // WWID-2772: only held rows mean attention. Phase 1 tallies count
-            // too — its failures can legally proceed into Phase 2, so a clean
-            // reconciliation over phase-1 failures is not a clean batch.
+            // WWID-2772: only held rows mean attention. Phase-1 tallies count:
+            // its failed/review rows stay unresolved on the batch even when
+            // the reconciliation itself is clean.
             $batch = $this->getBatchBySession($sessionId);
             $held = (int) ($batch['phase1_failed'] ?? 0)
                 + (int) ($batch['phase1_needs_review'] ?? 0)
