@@ -1421,7 +1421,7 @@ class ImportAdminPage
 											<button type="submit" class="button button-link-delete"><?php echo esc_html(self::clearButtonLabel($rowStatus)); ?></button>
 										</form>
 									<?php else : ?>
-										<?php if (in_array($row->status, ['pending_review', 'phase2_running', 'processing_complete'], true)) : ?>
+										<?php if ($row->import_flow === 'cheque' && in_array($row->status, ['pending_review', 'phase2_running', 'processing_complete', 'completed'], true)) : ?>
 											<a class="button button-small" href="<?php echo esc_url(admin_url('admin.php?page=wicket-wp-importer&tab=cheque-review&session_id=' . rawurlencode((string) $row->session_id))); ?>"><?php esc_html_e('Phase 2 review', 'wicket-wp-importer'); ?></a>
 										<?php endif; ?>
 										<?php if (in_array($row->status, ['pending_review', 'processing_complete', 'completed', 'failed'], true)) : ?>
@@ -1780,7 +1780,7 @@ class ImportAdminPage
 				<a class="button" href="<?php echo esc_url(wp_nonce_url($sourceRest . '/session/' . $batch->session_id . '/error-csv', 'wp_rest', '_wpnonce')); ?>">
 					<?php esc_html_e('Export errors (CSV)', 'wicket-wp-importer'); ?>
 				</a>
-				<?php if (in_array($batch->status, ['pending_review', 'phase2_running', 'processing_complete'], true)) : ?>
+				<?php if ($batch->import_flow === 'cheque' && in_array($batch->status, ['pending_review', 'phase2_running', 'processing_complete', 'completed'], true)) : ?>
 					<a class="button button-primary" href="<?php echo esc_url(admin_url('admin.php?page=wicket-wp-importer&tab=cheque-review&session_id=' . rawurlencode((string) $batch->session_id))); ?>">
 						<?php $batch->status === 'pending_review' ? esc_html_e('Start Phase 2', 'wicket-wp-importer') : esc_html_e('Open Phase 2 review', 'wicket-wp-importer'); ?>
 					</a>
