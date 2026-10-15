@@ -233,12 +233,11 @@ final class MappingResolver
     }
 
     /**
-     * Applies a coupon-type discount (WWID-2628 hardening). WC_Order::
-     * apply_coupon() returns false or a WP_Error when WooCommerce rejects
-     * the coupon (expired, usage-capped, or invalid code). The discount did
-     * not happen, so the attribution stamp is skipped and the rejection is
-     * logged: a stamped line carrying no coupon lies on the order edit
-     * screen and in any audit.
+     * Applies a coupon-type discount (WWID-2628 hardening). The entitlement
+     * stamp is OFFERED before apply_coupon() runs, because ScopedCouponGuard
+     * reads stamps through WC filters that fire inside the call; on any
+     * rejection or throw the offer is retracted, so a stamped line never
+     * carries no coupon.
      */
     private function applyCouponDiscount(MappingEntry $discount, object $item, object $renewalOrder): void
     {
@@ -246,28 +245,74 @@ final class MappingResolver
             return;
         }
 
+        $this->stampCouponAttribution($item, $discount);
+
         // Filter #3 fires once per line item, so a bundle order can offer
-        // the same code more than once. An already-applied code is done, not
-        // a rejection: stamp this line's attribution and stay quiet.
+        // the same code more than once (two members on one role). An
+        // already-applied code is done, not a rejection, but THIS line's
+        // stamp arrived after the last recalculation: force one, or the
+        // line keeps full price until some unrelated edit recalculates.
         if (method_exists($renewalOrder, 'get_coupon_codes')
             && in_array(wc_format_coupon_code($discount->couponCode), $renewalOrder->get_coupon_codes(), true)) {
-            $this->stampCouponAttribution($item, $discount);
+            try {
+                if (method_exists($renewalOrder, 'recalculate_coupons')) {
+                    $renewalOrder->recalculate_coupons();
+                }
+            } catch (\Throwable $e) {
+                $this->removeCouponAttribution($item, $discount->couponCode);
+
+                throw $e;
+            }
 
             return;
         }
 
-        $applied = $renewalOrder->apply_coupon($discount->couponCode);
+        try {
+            $applied = $renewalOrder->apply_coupon($discount->couponCode);
+        } catch (\Throwable $e) {
+            $this->removeCouponAttribution($item, $discount->couponCode);
+
+            throw $e;
+        }
+
         if ($applied === false || is_wp_error($applied)) {
+            // Retract the offer: a rejected coupon must not leave a stamp
+            // that would scope every later coupon on this order.
+            $this->removeCouponAttribution($item, $discount->couponCode);
             $this->logger?->warning('Bundle renewal discount coupon rejected by WooCommerce.', [
                 'role'   => $discount->roleSlug,
                 'coupon' => $discount->couponCode,
                 'error'  => is_wp_error($applied) ? $applied->get_error_message() : 'apply_coupon returned false',
             ]);
+        }
+    }
 
+    /**
+     * Retracts one code's offer stamp (mirror of stampCouponAttribution).
+     * Only the named code's row goes: a rejected second coupon on a line
+     * must not strip the entitlement an earlier coupon's recalculation
+     * still reads. When no valid code stamp remains, the role slug goes
+     * too (WWID-2628: no lying stamps on the order edit screen).
+     */
+    private function removeCouponAttribution(object $item, string $code): void
+    {
+        if (!method_exists($item, 'delete_meta_data_value') || !method_exists($item, 'save')) {
             return;
         }
 
-        $this->stampCouponAttribution($item, $discount);
+        $item->delete_meta_data_value(ScopedCouponGuard::ATTRIBUTION_META, $code);
+        $remaining = 0;
+        foreach ((array) $item->get_meta(ScopedCouponGuard::ATTRIBUTION_META, false) as $row) {
+            $value = is_object($row) ? ($row->value ?? null) : $row;
+            if (is_string($value) && $value !== '') {
+                $remaining++;
+            }
+        }
+
+        if ($remaining === 0 && method_exists($item, 'delete_meta_data')) {
+            $item->delete_meta_data(ScopedCouponGuard::ROLE_ATTRIBUTION_META);
+        }
+        $item->save();
     }
 
     /**
@@ -298,16 +343,30 @@ final class MappingResolver
      */
     private function stampCouponAttribution(object $item, MappingEntry $discount): void
     {
-        if (!method_exists($item, 'update_meta_data') || !method_exists($item, 'save')) {
+        if (!method_exists($item, 'add_meta_data') || !method_exists($item, 'get_meta') || !method_exists($item, 'save')) {
             return;
         }
 
-        // Flat scalar keys, not one array-valued key: WC_Order_Item::
-        // get_formatted_meta_data() skips any meta value that fails
-        // is_scalar(), so an array value never renders on the order edit
-        // screen at all.
-        $item->update_meta_data('_wicket_lockbox_coupon_code', $discount->couponCode);
-        $item->update_meta_data('_wicket_lockbox_coupon_role_slug', $discount->roleSlug);
+        // One meta ROW per code, never an array value: WC_Order_Item::
+        // get_formatted_meta_data() skips non-scalar values, so an array
+        // stamp would vanish from the order edit screen. Repeated rows
+        // render fine, and the guard reads a code SET: apply_coupon()
+        // recalculates every earlier coupon on the order, so a line that
+        // qualifies for two role coupons needs both stamps standing.
+        foreach ((array) $item->get_meta(ScopedCouponGuard::ATTRIBUTION_META, false) as $row) {
+            $value = is_object($row) && isset($row->value) ? $row->value : $row;
+            if (is_string($value)
+                && wc_format_coupon_code($value) === wc_format_coupon_code($discount->couponCode)) {
+                return;
+            }
+        }
+
+        $item->add_meta_data(ScopedCouponGuard::ATTRIBUTION_META, $discount->couponCode, false);
+        if (method_exists($item, 'update_meta_data')) {
+            // Role slug is informational (which mapping touched the line);
+            // the codes carry the entitlement.
+            $item->update_meta_data(ScopedCouponGuard::ROLE_ATTRIBUTION_META, $discount->roleSlug);
+        }
         $item->save();
     }
 

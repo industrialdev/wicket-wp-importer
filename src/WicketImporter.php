@@ -129,6 +129,10 @@ final class WicketImporter
         // wicket-wp-memberships (decision D-LOCKBOX-2, PULL architecture).
         new BundleRenewalSubscriber($logger);
 
+        // WWID-2616: keep engine renewal coupons from discounting lines of
+        // members not entitled to them. Scopes only codes the engine applied.
+        BulkImport\Subscriptions\ScopedCouponGuard::register();
+
         // Default handler for the inline import's subscription create path
         // (wicket_import_create_subscription). Owns the no-order subscription
         // capability so client themes never write WCS code on this path (AD1).
