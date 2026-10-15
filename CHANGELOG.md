@@ -5,6 +5,12 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 <!-- new releases inserted below this line -->
 
+## [1.0.68] - 2026-10-15
+
+### Documentation
+- reword code comments (banned term) (#12)
+
+
 ## [1.0.67] - 2026-10-15
 
 ### Fixed
