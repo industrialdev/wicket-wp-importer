@@ -13,12 +13,12 @@ use WicketImporter\BulkImport\Subscriptions\SubscriptionCreator;
 use WicketImporter\Services\Logger;
 
 /**
- * The cheque-flow RowProcessor: assemble a row's inputs (via the generic filter
- * seams a client answers), run ProductResolver -> OrderCreator ->
+ * The cheque-flow RowProcessor: assemble a row's inputs (via the generic filters
+ * a client answers), run ProductResolver -> OrderCreator ->
  * SubscriptionCreator, and apply the compensation rule.
  *
  * GENERICITY (AD1): core resolves NOTHING client-specific here. The membership
- * post and section slugs come from filter seams a client answers
+ * post and section slugs come from filters a client answers
  * (wicket_import_resolve_membership_post / wicket_import_resolve_section_slugs);
  * the WC customer comes from wicket_import_resolve_order_customer inside
  * OrderCreator. OBA supplies all three from its Bar ID; core is agnostic.
@@ -47,10 +47,10 @@ final class ChequeRowProcessor implements RowProcessor
         $data = $this->decode($row['raw_data'] ?? null);
         $stagingId = (int) ($row['id'] ?? 0);
 
-        // Build the row's MemberData once so every client seam the engine
+        // Build the row's MemberData once so every client hook the engine
         // exposes (order_customer, membership_post, section_slugs, the
         // sync_member_roles action) sees a consistent shape. tierPostId is
-        // resolved by the membership_post seam and not known up front.
+        // resolved by the membership_post filter and not known up front.
         $memberData = new MemberData(
             personUuid: (string) ($row['mdp_uuid'] ?? ''),
             person: [],
@@ -70,11 +70,11 @@ final class ChequeRowProcessor implements RowProcessor
         do_action('wicket_import_sync_member_roles', $memberData);
 
         $membershipPostId = (int) apply_filters('wicket_import_resolve_membership_post', 0, $memberData);
-        // Fail fast with an honest message when the seam resolves no membership
+        // Fail fast with an honest message when the filter resolves no membership
         // post. Passing 0 on would surface downstream as a misleading tier /
         // product error (WWID-2317 UAT: an unknown member identifier reported
         // as "No renewal product resolved for the member tier"). Covers both
-        // seam failure modes: the identifier matches no member, or the member
+        // filter failure modes: the identifier matches no member, or the member
         // has no active membership to renew (spec Story 3). Client-agnostic
         // wording; core never names the client's identifier (AD1).
         if ($membershipPostId <= 0) {

@@ -11,7 +11,7 @@ use WicketImporter\Services\Logger;
  * PaymentMatcher). There is ONE CSV: each Phase 1 record carries its own
  * bank amount (the CSV order_total) and its own order_id on the staging row,
  * so Phase 2 reconciles a record against the order Phase 1 created for it.
- * No Bar ID lookup, no amount disambiguation, no client seam for order
+ * No Bar ID lookup, no amount disambiguation, no client override for order
  * resolution (mechanism, AD1-clean).
  *
  * Per-record flow:

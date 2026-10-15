@@ -809,7 +809,7 @@ final class UploadController
      */
     private function resolveColumns(string $context = 'bulk'): array
     {
-        // Delegates to the single resolution seam in ColumnOrder so the CSV
+        // Delegates to the single resolution point in ColumnOrder so the CSV
         // template, validation, admin tables, and exports all resolve columns
         // the same way (wicket_import_csv_columns -> mergeWith -> client
         // presentation overrides). See ColumnOrder::resolvedColumns().
