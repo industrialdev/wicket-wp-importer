@@ -5,6 +5,12 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 <!-- new releases inserted below this line -->
 
+## [1.0.69] - 2026-10-15
+
+### Added
+- **lockbox:** scope renewal coupons to the entitled member (WWID-2616) (#13)
+
+
 ## [1.0.68] - 2026-10-15
 
 ### Documentation
