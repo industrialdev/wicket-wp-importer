@@ -5,6 +5,12 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 <!-- new releases inserted below this line -->
 
+## [1.0.67] - 2026-10-15
+
+### Fixed
+- **lockbox:** land clean phase-2 drains in completed (WWID-2772) (#11)
+
+
 ## [1.0.66] - 2026-10-08
 
 ### Added
