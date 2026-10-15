@@ -63,10 +63,7 @@ final class ScopedCouponGuard
 
         $stamps = [];
         foreach ($discounts->get_items() as $entry) {
-            $code = self::itemStamp($entry->object ?? null);
-            if ($code !== '') {
-                $stamps[$code] = true;
-            }
+            $stamps += self::itemStamps($entry->object ?? null);
         }
 
         $code = self::formatCode($coupon->get_code() ?? '');
@@ -76,20 +73,37 @@ final class ScopedCouponGuard
 
         return array_values(array_filter(
             $itemsToApply,
-            static fn ($entry): bool => self::itemStamp($entry->object ?? null) === $code,
+            static fn ($entry): bool => isset(self::itemStamps($entry->object ?? null)[$code]),
         ));
     }
 
     /**
-     * The item's entitlement stamp as a formatted code, '' when unstamped.
+     * The item's entitlement stamps as a formatted-code set, [] when
+     * unstamped. A line can qualify for several role coupons and
+     * apply_coupon() recalculates EVERY coupon on the order, so each earlier
+     * coupon's recalculation must still find its stamp: codes ride as one
+     * meta row per offer, not one overwritable scalar.
+     *
+     * @return array<string, true>
      */
-    private static function itemStamp(mixed $item): string
+    private static function itemStamps(mixed $item): array
     {
         if (!is_object($item) || !method_exists($item, 'get_meta')) {
-            return '';
+            return [];
         }
 
-        return self::formatCode($item->get_meta(self::ATTRIBUTION_META));
+        $stamps = [];
+        foreach ((array) $item->get_meta(self::ATTRIBUTION_META, false) as $row) {
+            // WC stores rows as WC_Meta_Data; the flat string covers legacy
+            // single-row orders and lightweight doubles.
+            $value = is_object($row) && isset($row->value) ? $row->value : $row;
+            $formatted = self::formatCode($value);
+            if ($formatted !== '') {
+                $stamps[$formatted] = true;
+            }
+        }
+
+        return $stamps;
     }
 
     /**
@@ -103,6 +117,6 @@ final class ScopedCouponGuard
             return '';
         }
 
-        return function_exists('wc_format_coupon_code') ? wc_format_coupon_code($code) : $code;
+        return wc_format_coupon_code($code);
     }
 }
