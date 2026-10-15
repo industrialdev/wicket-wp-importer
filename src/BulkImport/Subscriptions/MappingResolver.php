@@ -246,18 +246,25 @@ final class MappingResolver
             return;
         }
 
+        // Offer BEFORE apply: ScopedCouponGuard reads entitlement stamps
+        // through WC filters that fire inside apply_coupon(); a stamp written
+        // only after success is invisible to the order's first coupon and the
+        // discount runs order-wide (WWID-2616).
+        $this->stampCouponAttribution($item, $discount);
+
         // Filter #3 fires once per line item, so a bundle order can offer
         // the same code more than once. An already-applied code is done, not
-        // a rejection: stamp this line's attribution and stay quiet.
+        // a rejection: keep this line's attribution and stay quiet.
         if (method_exists($renewalOrder, 'get_coupon_codes')
             && in_array(wc_format_coupon_code($discount->couponCode), $renewalOrder->get_coupon_codes(), true)) {
-            $this->stampCouponAttribution($item, $discount);
-
             return;
         }
 
         $applied = $renewalOrder->apply_coupon($discount->couponCode);
         if ($applied === false || is_wp_error($applied)) {
+            // Retract the offer: a rejected coupon must not leave a stamp
+            // that would scope every later coupon on this order.
+            $this->removeCouponAttribution($item);
             $this->logger?->warning('Bundle renewal discount coupon rejected by WooCommerce.', [
                 'role'   => $discount->roleSlug,
                 'coupon' => $discount->couponCode,
@@ -266,8 +273,20 @@ final class MappingResolver
 
             return;
         }
+    }
 
-        $this->stampCouponAttribution($item, $discount);
+    /**
+     * Retracts an unapplied offer stamp (mirror of stampCouponAttribution).
+     */
+    private function removeCouponAttribution(object $item): void
+    {
+        if (!method_exists($item, 'delete_meta_data') || !method_exists($item, 'save')) {
+            return;
+        }
+
+        $item->delete_meta_data(ScopedCouponGuard::ATTRIBUTION_META);
+        $item->delete_meta_data(ScopedCouponGuard::ROLE_ATTRIBUTION_META);
+        $item->save();
     }
 
     /**
@@ -306,8 +325,8 @@ final class MappingResolver
         // get_formatted_meta_data() skips any meta value that fails
         // is_scalar(), so an array value never renders on the order edit
         // screen at all.
-        $item->update_meta_data('_wicket_lockbox_coupon_code', $discount->couponCode);
-        $item->update_meta_data('_wicket_lockbox_coupon_role_slug', $discount->roleSlug);
+        $item->update_meta_data(ScopedCouponGuard::ATTRIBUTION_META, $discount->couponCode);
+        $item->update_meta_data(ScopedCouponGuard::ROLE_ATTRIBUTION_META, $discount->roleSlug);
         $item->save();
     }
 
