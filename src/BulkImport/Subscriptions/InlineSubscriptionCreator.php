@@ -7,7 +7,7 @@ namespace WicketImporter\BulkImport\Subscriptions;
 use WicketImporter\Services\Logger;
 
 /**
- * Default handler for the inline member import's subscription create-seam.
+ * Default handler for the inline member import's subscription create hook.
  *
  * ImportAdapter fires `wicket_import_create_subscription` on the OBA inline
  * path because core does not call WCS there. This class IS that capability:

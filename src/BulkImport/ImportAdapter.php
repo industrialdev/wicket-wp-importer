@@ -145,7 +145,7 @@ final class ImportAdapter
         // Both post-create actions are fired safe: the membership is already created,
         // so an extension throw (e.g. OBA's Bar ID minter) must NOT demote this row to
         // needs_review — it is logged and the row stays 'created'. The subscription
-        // seam receives the staging row ID so the default InlineSubscriptionCreator
+        // action receives the staging row ID so the default InlineSubscriptionCreator
         // can write the created subscription ID back onto the staged row (WWID-2350).
         $this->fireSafe('wicket_import_create_subscription', [(int) $membership_id, $user_id, $data->row, (int) $data->stagingId]);
 

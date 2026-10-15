@@ -96,7 +96,7 @@ final class ColumnOrder
      *     desired order. Unlisted keys append in their current order so no
      *     column is silently dropped.
      *
-     * Wired into {@see resolvedColumns()} (the single resolution seam used by
+     * Wired into {@see resolvedColumns()} (the single resolution point used by
      * UploadController and forRows) so the CSV template, validation table, and
      * exports all agree on column presentation.
      *

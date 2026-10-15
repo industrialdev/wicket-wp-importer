@@ -18,14 +18,14 @@ use WicketImporter\Services\Logger;
  * error VO instead of mutating order status inline, and the
  * wicket_import_subscriptions_created action fires so extensions can adjust
  * after creation (distinct from ImportAdapter's wicket_import_create_subscription
- * create-seam, so the OBA create-handler never double-fires here).
+ * create action, so the OBA create-handler never double-fires here).
  *
  * INPUT-GAP ASSUMPTIONS (the create() contract is fixed as
  * create(int $orderId, MemberData, ResolvedProducts); OrderCreator + the
  * cheque BatchProcessor are not yet built, so these are documented calls to
  * revise when they land):
  *
- *   1. RESOLVED 2026-07-31 (WWID-2028 seam closure): the membership post ID
+ *   1. RESOLVED 2026-07-31 (WWID-2028 decision): the membership post ID
  *      for the `_membership_post_id_renew` line-item meta is supplied by the
  *      caller (ChequeRowProcessor sources it via the
  *      wicket_import_resolve_membership_post filter) and passed into create().
@@ -94,7 +94,7 @@ class SubscriptionCreator
         /*
          * Let extensions adjust AFTER subscription creation. This cheque path
          * has already created its subscriptions, so it MUST NOT fire
-         * wicket_import_create_subscription (the OBA create-seam fired by
+         * wicket_import_create_subscription (the OBA create action fired by
          * ImportAdapter): doing so would make create-handlers mint duplicates.
          * Past-tense name = already created, adjust only.
          *

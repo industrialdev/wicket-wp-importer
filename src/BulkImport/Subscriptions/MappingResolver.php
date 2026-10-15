@@ -27,7 +27,7 @@ use WicketImporter\Services\Logger;
  * mapping's product is added to the renewal order. Discounts: a 'coupon' entry
  * applies its coupon code; a 'product' entry is added as a line item (callers
  * expect a negative total for a discount product, set on the product itself).
- * Revise here if the real OBA/lockbox spec differs; the seam is
+ * Revise here if the real OBA/lockbox spec differs; the override point is
  * applyMappings().
  *
  * Safe by default: with no client-configured role-matched mappings (the seeded
