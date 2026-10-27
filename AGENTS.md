@@ -29,7 +29,7 @@ This is a WordPress plugin rooted at `wicket-wp-importer.php`.
 ## Commit & Pull Request Guidelines
 Git history favors short, imperative, scope-specific messages.
 - Keep commits focused; avoid mixed refactor/feature changes.
-- PRs should include: purpose, risk notes, test evidence.
+- PR descriptions use the repo `.github/PULL_REQUEST_TEMPLATE.md`; full rules, including the title format: `@see atlas://conventions/pr-template.md`.
 
 ## Security & WordPress-Specific Requirements
 - Sanitize, validate, and escape all input/output.
