@@ -173,6 +173,13 @@ class ProductResolver
         $productIds = [];
         $couponCodes = [];
         foreach ($entries as $entry) {
+            // Same membership-scope veto the bundle-renewal path answers
+            // (WWID-2628): a role match alone cannot see WHAT the row renews.
+            // The cheque flow has no line item or order yet, so the client
+            // decides on the membership post alone (nulls, not dummies).
+            if (!apply_filters('wicket_import_discount_applies', true, $entry, $membershipPostId, 0, null, null)) {
+                continue;
+            }
             // SKU-canonical (D-LOCKBOX-1): entries may carry only a SKU;
             // resolve at call time like every other mapping consumer.
             // Reading $entry->productId directly here silently dropped every
