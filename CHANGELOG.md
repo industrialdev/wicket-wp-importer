@@ -5,6 +5,15 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 <!-- new releases inserted below this line -->
 
+## [1.0.70] - 2026-11-04
+
+### Fixed
+- **cheque:** answer the discount veto on cheque imports (WWID-2628) (#15)
+
+### Documentation
+- adopt the stack PR template format #norelease
+
+
 ## [1.0.69] - 2026-10-15
 
 ### Added
