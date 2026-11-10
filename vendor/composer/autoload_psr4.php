@@ -7,5 +7,4 @@ $baseDir = dirname($vendorDir);
 
 return array(
     'WicketImporter\\' => array($baseDir . '/src'),
-    'HyperFields\\' => array($vendorDir . '/estebanforge/hyperfields/src'),
 );
