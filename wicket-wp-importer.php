@@ -10,7 +10,7 @@
  * Domain Path:       /languages
  * Requires at least: 6.6
  * Requires PHP:      8.2
- * Requires Plugins:  wicket-wp-base-plugin, woocommerce, woocommerce-subscriptions, wicket-wp-memberships.
+ * Requires Plugins:  wicket-wp-base-plugin, woocommerce, woocommerce-subscriptions, wicket-wp-memberships, wicket-wp-account-centre
  */
 if (!defined('ABSPATH')) {
     exit;
@@ -33,15 +33,79 @@ if (file_exists(WICKET_IMPORT_PATH . 'vendor/autoload.php')) {
     require_once WICKET_IMPORT_PATH . 'vendor/autoload.php';
 }
 
+/*
+|--------------------------------------------------------------------------
+| Dependency: wicket-wp-account-centre
+|--------------------------------------------------------------------------
+|
+| This plugin requires wicket-wp-account-centre to be active. That plugin
+| provides the HyperFields\ namespace that the importer's admin pages rely
+| on. This plugin does not vendor the library itself.
+|
+| On activation we abort with a clear message if the dependency is missing.
+| After activation we bail out of the bootstrap and show an admin notice if
+| the dependency is deactivated while the importer is still active.
+|
+*/
+
+if (!function_exists('wicket_importer_check_account_centre_dependency')) {
+    /**
+     * Returns true when wicket-wp-account-centre is active.
+     */
+    function wicket_importer_check_account_centre_dependency(): bool
+    {
+        if (!function_exists('is_plugin_active')) {
+            require_once ABSPATH . 'wp-admin/includes/plugin.php';
+        }
+
+        return is_plugin_active('wicket-wp-account-centre/class-wicket-acc-main.php');
+    }
+}
+
+if (!function_exists('wicket_importer_dependency_missing_notice')) {
+    /**
+     * Renders the admin notice shown when the required plugin is inactive.
+     */
+    function wicket_importer_dependency_missing_notice(): void
+    {
+        echo '<div class="notice notice-error"><p>';
+        echo esc_html__(
+            'Wicket Importer requires the Wicket Account Centre plugin to be installed and activated.',
+            'wicket-wp-importer'
+        );
+        echo '</p></div>';
+    }
+}
+
+register_activation_hook(__FILE__, static function (): void {
+    if (!wicket_importer_check_account_centre_dependency()) {
+        deactivate_plugins(WICKET_IMPORT_BASENAME);
+        wp_die(
+            esc_html__(
+                'Wicket Importer requires the Wicket Account Centre plugin to be installed and activated. Please activate it before enabling this plugin.',
+                'wicket-wp-importer'
+            ),
+            esc_html__('Plugin activation failed', 'wicket-wp-importer'),
+            ['back_link' => true]
+        );
+    }
+
+    WicketImporter\BulkImport\Database\DbInstaller::createTables();
+    WicketImporter\WicketImporter::scheduleSessionExpiry();
+});
+
 // Initialize the plugin. Registered on `init` (not `plugins_loaded`) because
 // plugin_setup() depends on wicket_api_client(), which the base plugin loads
-// at `init` priority 0.
-add_action('init', [WicketImporter\WicketImporter::get_instance(), 'plugin_setup']);
+// at `init` priority 0. The dependency check runs on plugins_loaded, when
+// account-centre's autoloader is already in place.
+add_action('plugins_loaded', static function (): void {
+    if (!wicket_importer_check_account_centre_dependency()) {
+        add_action('admin_notices', 'wicket_importer_dependency_missing_notice');
 
-// Activation hook for DB installation
-register_activation_hook(__FILE__, [WicketImporter\BulkImport\Database\DbInstaller::class, 'createTables']);
+        return;
+    }
 
-// Session TTL auto-expiry (Task 38.3): hourly cron + activation/deactivation pair.
-register_activation_hook(__FILE__, [WicketImporter\WicketImporter::class, 'scheduleSessionExpiry']);
+    add_action('init', [WicketImporter\WicketImporter::get_instance(), 'plugin_setup']);
+});
 register_deactivation_hook(__FILE__, [WicketImporter\WicketImporter::class, 'clearSessionExpiry']);
 add_action('wicket_import_expire_stale_sessions', [WicketImporter\WicketImporter::class, 'expireStaleSessions']);
