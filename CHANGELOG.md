@@ -5,6 +5,12 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 <!-- new releases inserted below this line -->
 
+## [1.0.72] - 2026-11-23
+
+### Maintenance
+- sync PR template stub with agent-first spec (#17)
+
+
 ## [1.0.71] - 2026-11-10
 
 ### Maintenance
